@@ -13,4 +13,6 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/licencias-server-1.0.0.jar app.jar
 EXPOSE 9090
-ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=prod"]
+# Render entrega DATABASE_URL como "postgresql://..." (sin jdbc:). El driver PG
+# exige "jdbc:postgresql://...". Anteponemos el prefijo en el arranque.
+ENTRYPOINT ["sh", "-c", "java -jar app.jar --spring.profiles.active=prod --spring.datasource.url=jdbc:${DATABASE_URL}"]
