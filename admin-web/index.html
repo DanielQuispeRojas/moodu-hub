@@ -38,6 +38,7 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='lic'}" @click="tab='lic'">Licencias</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='paq'}" @click="tab='paq'">Paquetes</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='disp'}" @click="tab='disp'">Dispositivos</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='cat'}" @click="tab='cat'">Catálogo</button></li>
     </ul>
 
     <!-- LICENCIAS -->
@@ -72,10 +73,43 @@
               <td>{{ l.maquinasPermitidas }}</td>
               <td>{{ l.vigenciaUnidad }} {{ l.vigenciaValor }}</td>
               <td>{{ l.activa ? 'Si' : 'No' }}</td>
-              <td><button class="btn btn-sm btn-outline-danger" @click="verDisp(l)">Ver disp.</button></td>
+              <td>
+                <button class="btn btn-sm btn-outline-info me-1" @click="editarLic(l)">Editar</button>
+                <button class="btn btn-sm btn-outline-danger me-1" @click="verDisp(l)">Ver disp.</button>
+                <button class="btn btn-sm btn-outline-warning" @click="revocarLic(l)">Revocar</button>
+              </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- MODAL EDICION LICENCIA -->
+      <div v-if="licEditando" class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.6)">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content bg-dark text-light">
+            <div class="modal-header"><h6 class="modal-title">Editar licencia #{{ licEditando.id }}</h6></div>
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-6"><input v-model="licEditando.nombre" class="form-control form-control-sm" placeholder="Nombre" /></div>
+                <div class="col-6"><input v-model="licEditando.apellido" class="form-control form-control-sm" placeholder="Apellido" /></div>
+                <div class="col-12"><input v-model="licEditando.correo" class="form-control form-control-sm" placeholder="Correo" /></div>
+                <div class="col-4"><input v-model.number="licEditando.maquinasPermitidas" type="number" class="form-control form-control-sm" placeholder="Maquinas" /></div>
+                <div class="col-4">
+                  <select v-model="licEditando.vigenciaUnidad" class="form-select form-select-sm">
+                    <option>DIAS</option><option>MESES</option><option>ANIO</option><option>INDEFINIDO</option>
+                  </select>
+                </div>
+                <div class="col-4"><input v-model.number="licEditando.vigenciaValor" type="number" class="form-control form-control-sm" placeholder="Valor" /></div>
+                <div class="col-12"><input v-model="licEditando.modulosText" class="form-control form-control-sm" placeholder="Modulos (coma)" /></div>
+                <div class="col-12"><div class="form-check"><input type="checkbox" class="form-check-input" v-model="licEditando.activa" id="chkActiva"><label class="form-check-label" for="chkActiva">Activa</label></div></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary btn-sm" @click="licEditando=null">Cancelar</button>
+              <button class="btn btn-primary btn-sm" @click="guardarLic">Guardar</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -129,12 +163,58 @@
         </table>
       </div>
     </div>
+
+    <!-- CATALOGO -->
+    <div v-if="tab==='cat'">
+      <div class="card p-3 mb-3">
+        <h6>Nuevo módulo del catálogo</h6>
+        <div class="row g-2">
+          <div class="col-4"><input v-model="nuevoM.clave" class="form-control form-control-sm" placeholder="Clave (ej: recepcion)" /></div>
+          <div class="col-4"><input v-model="nuevoM.nombre" class="form-control form-control-sm" placeholder="Nombre" /></div>
+          <div class="col-4"><input v-model="nuevoM.version" class="form-control form-control-sm" placeholder="Version (1.0.0)" /></div>
+          <div class="col-3"><select v-model="nuevoM.origen" class="form-select form-select-sm"><option>OFICIAL</option><option>TERCERO</option></select></div>
+          <div class="col-3"><select v-model="nuevoM.tipo" class="form-select form-select-sm"><option>GRATIS</option><option>PAGA</option></select></div>
+          <div class="col-3"><input v-model.number="nuevoM.precio" type="number" class="form-control form-control-sm" placeholder="Precio" /></div>
+          <div class="col-3"><input v-model="nuevoM.desarrollador" class="form-control form-control-sm" placeholder="Desarrollador" /></div>
+          <div class="col-12"><input v-model="nuevoM.descripcion" class="form-control form-control-sm" placeholder="Descripcion" /></div>
+          <div class="col-6"><input v-model="nuevoM.linkDescarga" class="form-control form-control-sm" placeholder="Link descarga/instalador" /></div>
+          <div class="col-6"><input v-model="nuevoM.linkRepositorio" class="form-control form-control-sm" placeholder="Link repositorio (terceros)" /></div>
+        </div>
+        <button class="btn btn-success btn-sm mt-2" @click="crearModulo">Crear módulo</button>
+      </div>
+
+      <div class="card p-3 mb-3">
+        <h6>Versión del sistema (instalador MOODU)</h6>
+        <div class="row g-2">
+          <div class="col-3"><input v-model="nuevaV.version" class="form-control form-control-sm" placeholder="Version (2.0.1)" /></div>
+          <div class="col-6"><input v-model="nuevaV.urlDescarga" class="form-control form-control-sm" placeholder="URL del instalador" /></div>
+          <div class="col-3"><input v-model="nuevaV.notas" class="form-control form-control-sm" placeholder="Notas" /></div>
+        </div>
+        <button class="btn btn-info btn-sm mt-2" @click="crearVersion">Publicar versión</button>
+      </div>
+
+      <div class="card p-3">
+        <table class="table table-dark table-sm mb-0">
+          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th></tr></thead>
+          <tbody>
+            <tr v-for="m in catalogo" :key="m.id">
+              <td><code>{{ m.clave }}</code></td>
+              <td>{{ m.nombre }}</td>
+              <td>{{ m.origen }}</td>
+              <td>{{ m.tipo }}</td>
+              <td>{{ m.tipo === 'PAGA' ? '$' + m.precio : 'Gratis' }}</td>
+              <td>{{ m.version }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
 const { createApp, ref, reactive, onMounted } = Vue
-const API = 'http://localhost:9090'
+const API = 'https://moodu-hub.onrender.com'
 
 createApp({
   setup() {
@@ -145,6 +225,11 @@ createApp({
     const paquetes = ref([])
     const maquinas = ref([])
     const licSeleccionada = ref(null)
+    const licEditando = ref(null)
+    const catalogo = ref([])
+    const nuevoM = reactive({ clave:'', nombre:'', version:'1.0.0', desarrollador:'',
+      origen:'OFICIAL', tipo:'GRATIS', precio:0, descripcion:'', linkDescarga:'', linkRepositorio:'' })
+    const nuevaV = reactive({ version:'', urlDescarga:'', notas:'' })
 
     const login = reactive({ usuario: '', clave: '' })
     const nueva = reactive({ nombre:'', apellido:'', correo:'', claveActivacion:'',
@@ -166,11 +251,21 @@ createApp({
     function logout() { token.value=''; localStorage.removeItem('moodu-admin-token') }
 
     async function cargar() {
-      const [l, p] = await Promise.all([
+      const [l, p, c] = await Promise.all([
         fetch(API + '/api/admin/gestion/licencias', { headers: authHeaders() }).then(r=>r.json()),
-        fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json())
+        fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json()),
+        fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json())
       ])
-      licencias.value = l; paquetes.value = p
+      licencias.value = l; paquetes.value = p; catalogo.value = c
+    }
+    async function crearModulo() {
+      const body = { ...nuevoM, activo: true }
+      await fetch(API + '/api/admin/gestion/catalogo/modulos', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
+      cargar()
+    }
+    async function crearVersion() {
+      const body = { ...nuevaV, activo: true }
+      await fetch(API + '/api/admin/gestion/versiones', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
     }
     async function crearLicencia() {
       const body = { ...nueva, modulos: nueva.modulos.split(',').map(s=>s.trim()).filter(Boolean) }
@@ -193,10 +288,34 @@ createApp({
         { method:'POST', headers: authHeaders() })
       verDisp(licSeleccionada.value)
     }
+    function editarLic(l) {
+      licEditando.value = { ...l, modulosText: (l.modulos || []).join(', ') }
+    }
+    async function guardarLic() {
+      const l = licEditando.value
+      const body = {
+        nombre: l.nombre, apellido: l.apellido, correo: l.correo,
+        maquinasPermitidas: l.maquinasPermitidas, vigenciaUnidad: l.vigenciaUnidad,
+        vigenciaValor: l.vigenciaValor, activa: l.activa,
+        modulos: (l.modulosText || '').split(',').map(s=>s.trim()).filter(Boolean)
+      }
+      await fetch(API + `/api/admin/gestion/licencias/${l.id}`, {
+        method:'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+      licEditando.value = null
+      cargar()
+    }
+    async function revocarLic(l) {
+      if (!confirm(`Revocar la licencia de ${l.correo}? El cliente perdera el acceso.`)) return
+      await fetch(API + `/api/admin/gestion/licencias/${l.id}`, {
+        method:'DELETE', headers: authHeaders() })
+      cargar()
+    }
 
     onMounted(() => { if (token.value) cargar() })
-    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada,
-      login, nueva, nuevoP, hacerLogin, logout, cargar, crearLicencia, crearPaquete, verDisp, desactivar }
+    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licEditando, catalogo,
+      login, nueva, nuevoP, nuevoM, nuevaV, hacerLogin, logout, cargar,
+      crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
+      editarLic, guardarLic, revocarLic }
   }
 }).mount('#app')
 </script>
