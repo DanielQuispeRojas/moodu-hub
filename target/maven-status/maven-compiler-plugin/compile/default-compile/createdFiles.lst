@@ -1,4 +1,5 @@
 com\idastasoft\licencias\model\ModuloCatalogo$TipoLicencia.class
+com\idastasoft\licencias\config\CorsConfig$1.class
 com\idastasoft\licencias\controller\LicenciaController.class
 com\idastasoft\licencias\model\Licencia$UnidadVigencia.class
 com\idastasoft\licencias\repository\ModuloCatalogoRepo.class
@@ -24,5 +25,6 @@ com\idastasoft\licencias\model\Desarrollador.class
 com\idastasoft\licencias\model\Licencia.class
 com\idastasoft\licencias\service\HubConfigService.class
 com\idastasoft\licencias\service\LicenciaService$1.class
+com\idastasoft\licencias\config\CorsConfig.class
 com\idastasoft\licencias\repository\PaqueteRepo.class
 com\idastasoft\licencias\repository\ClienteUsuarioRepo.class

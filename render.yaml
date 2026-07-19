@@ -1,0 +1,28 @@
+# Render: despliegue del MOODU Hub (licencias-server).
+# Este archivo asume que el repo contiene SOLO el licencias-server en su raiz.
+services:
+  - type: web
+    name: moodu-hub
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/catalogo/modulos
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: moodu-hub-db
+          property: connectionString
+      - key: DB_USERNAME
+        fromDatabase:
+          name: moodu-hub-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: moodu-hub-db
+          property: password
+      - key: PORT
+        value: "9090"
+
+databases:
+  - name: moodu-hub-db
+    databaseName: moodu_hub
+    plan: free

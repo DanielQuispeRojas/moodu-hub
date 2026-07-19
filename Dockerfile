@@ -1,5 +1,6 @@
 # Dockerfile para el MOODU Hub (licencias-server) en Render/Railway.
 # Multi-stage: build con Maven -> corre con JRE 21.
+# Asume que este Dockerfile esta en la RAIZ del repo del licencias-server.
 
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
