@@ -7,10 +7,18 @@ services:
     plan: free
     healthCheckPath: /api/catalogo/modulos
     envVars:
-      - key: DATABASE_URL
+      - key: DB_HOST
         fromDatabase:
           name: moodu-hub-db
-          property: connectionString
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: moodu-hub-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: moodu-hub-db
+          property: database
       - key: DB_USERNAME
         fromDatabase:
           name: moodu-hub-db
