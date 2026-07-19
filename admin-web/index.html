@@ -134,13 +134,37 @@
               <td>S/ {{ p.precio }}</td>
               <td><span v-for="m in p.modulos" :key="m" class="badge bg-secondary me-1">{{ m }}</span></td>
               <td>{{ p.activo ? 'Si' : 'No' }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-info me-1" @click="editarPaq(p)">Editar</button>
+                <button class="btn btn-sm btn-outline-warning" @click="eliminarPaq(p)">Eliminar</button>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- DISPOSITIVOS -->
+      <!-- MODAL EDICION PAQUETE -->
+      <div v-if="paqEditando" class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.6)">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content bg-dark text-light">
+            <div class="modal-header"><h6 class="modal-title">Editar paquete #{{ paqEditando.id }}</h6></div>
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-6"><input v-model="paqEditando.nombre" class="form-control form-control-sm" placeholder="Nombre" /></div>
+                <div class="col-3"><input v-model.number="paqEditando.precio" type="number" class="form-control form-control-sm" placeholder="Precio" /></div>
+                <div class="col-3"><div class="form-check mt-2"><input type="checkbox" class="form-check-input" v-model="paqEditando.activo" id="chkPaqActiva"><label class="form-check-label" for="chkPaqActiva">Activo</label></div></div>
+                <div class="col-12"><input v-model="paqEditando.modulosText" class="form-control form-control-sm" placeholder="Modulos (coma)" /></div>
+                <div class="col-12"><input v-model="paqEditando.descripcion" class="form-control form-control-sm" placeholder="Descripcion" /></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary btn-sm" @click="paqEditando=null">Cancelar</button>
+              <button class="btn btn-primary btn-sm" @click="guardarPaq">Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div v-if="tab==='disp'">
       <div class="alert alert-info py-2 small" v-if="!licSeleccionada">
         Selecciona "Ver disp." en una licencia para ver y desligar maquinas.
@@ -195,7 +219,7 @@
 
       <div class="card p-3">
         <table class="table table-dark table-sm mb-0">
-          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th></tr></thead>
+          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th></th></tr></thead>
           <tbody>
             <tr v-for="m in catalogo" :key="m.id">
               <td><code>{{ m.clave }}</code></td>
@@ -204,9 +228,40 @@
               <td>{{ m.tipo }}</td>
               <td>{{ m.tipo === 'PAGA' ? '$' + m.precio : 'Gratis' }}</td>
               <td>{{ m.version }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-info me-1" @click="editarMod(m)">Editar</button>
+                <button class="btn btn-sm btn-outline-warning" @click="eliminarMod(m)">Eliminar</button>
+              </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- MODAL EDICION CATALOGO -->
+      <div v-if="modEditando" class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.6)">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content bg-dark text-light">
+            <div class="modal-header"><h6 class="modal-title">Editar módulo #{{ modEditando.id }}</h6></div>
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-4"><input v-model="modEditando.clave" class="form-control form-control-sm" placeholder="Clave" :disabled="true" /></div>
+                <div class="col-4"><input v-model="modEditando.nombre" class="form-control form-control-sm" placeholder="Nombre" /></div>
+                <div class="col-4"><input v-model="modEditando.version" class="form-control form-control-sm" placeholder="Version" /></div>
+                <div class="col-3"><select v-model="modEditando.origen" class="form-select form-select-sm"><option>OFICIAL</option><option>TERCERO</option></select></div>
+                <div class="col-3"><select v-model="modEditando.tipo" class="form-select form-select-sm"><option>GRATIS</option><option>PAGA</option></select></div>
+                <div class="col-3"><input v-model.number="modEditando.precio" type="number" class="form-control form-control-sm" placeholder="Precio" /></div>
+                <div class="col-3"><input v-model="modEditando.desarrollador" class="form-control form-control-sm" placeholder="Desarrollador" /></div>
+                <div class="col-12"><input v-model="modEditando.descripcion" class="form-control form-control-sm" placeholder="Descripcion" /></div>
+                <div class="col-6"><input v-model="modEditando.linkDescarga" class="form-control form-control-sm" placeholder="Link descarga" /></div>
+                <div class="col-6"><input v-model="modEditando.linkRepositorio" class="form-control form-control-sm" placeholder="Link repositorio" /></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary btn-sm" @click="modEditando=null">Cancelar</button>
+              <button class="btn btn-primary btn-sm" @click="guardarMod">Guardar</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -226,6 +281,8 @@ createApp({
     const maquinas = ref([])
     const licSeleccionada = ref(null)
     const licEditando = ref(null)
+    const modEditando = ref(null)
+    const paqEditando = ref(null)
     const catalogo = ref([])
     const nuevoM = reactive({ clave:'', nombre:'', version:'1.0.0', desarrollador:'',
       origen:'OFICIAL', tipo:'GRATIS', precio:0, descripcion:'', linkDescarga:'', linkRepositorio:'' })
@@ -277,6 +334,48 @@ createApp({
       await fetch(API + '/api/admin/gestion/paquetes', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
       cargar()
     }
+    function editarPaq(p) {
+      paqEditando.value = { ...p, modulosText: (p.modulos || []).join(', ') }
+    }
+    async function guardarPaq() {
+      const p = paqEditando.value
+      const body = {
+        nombre: p.nombre, descripcion: p.descripcion,
+        modulos: (p.modulosText || '').split(',').map(s=>s.trim()).filter(Boolean),
+        precio: p.precio, activo: p.activo
+      }
+      await fetch(API + `/api/admin/gestion/paquetes/${p.id}`, {
+        method:'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+      paqEditando.value = null
+      cargar()
+    }
+    async function eliminarPaq(p) {
+      if (!confirm(`Eliminar el paquete "${p.nombre}"?`)) return
+      await fetch(API + `/api/admin/gestion/paquetes/${p.id}`, {
+        method:'DELETE', headers: authHeaders() })
+      cargar()
+    }
+    function editarMod(m) {
+      modEditando.value = { ...m }
+    }
+    async function guardarMod() {
+      const m = modEditando.value
+      const body = {
+        clave: m.clave, nombre: m.nombre, version: m.version, desarrollador: m.desarrollador,
+        origen: m.origen, tipo: m.tipo, precio: m.precio, descripcion: m.descripcion,
+        linkDescarga: m.linkDescarga, linkRepositorio: m.linkRepositorio, activo: m.activo
+      }
+      await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}`, {
+        method:'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+      modEditando.value = null
+      cargar()
+    }
+    async function eliminarMod(m) {
+      if (!confirm(`Eliminar el módulo "${m.nombre}" (clave ${m.clave}) del catálogo?`)) return
+      await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}`, {
+        method:'DELETE', headers: authHeaders() })
+      cargar()
+    }
     async function verDisp(l) {
       licSeleccionada.value = l
       tab.value = 'disp'
@@ -312,10 +411,12 @@ createApp({
     }
 
     onMounted(() => { if (token.value) cargar() })
-    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licEditando, catalogo,
+    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licEditando,
+      modEditando, paqEditando, catalogo,
       login, nueva, nuevoP, nuevoM, nuevaV, hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
-      editarLic, guardarLic, revocarLic }
+      editarLic, guardarLic, revocarLic,
+      editarPaq, guardarPaq, eliminarPaq, editarMod, guardarMod, eliminarMod }
   }
 }).mount('#app')
 </script>
