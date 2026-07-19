@@ -1,0 +1,9 @@
+{
+  "sitioWeb": "https://moodu.com",
+  "comision": {
+    "tipo": "PORCENTAJE",
+    "valor": 15.0,
+    "moneda": "USD",
+    "notas": "Monto que MOODU se queda por cada venta de modulo de tercero en la tienda."
+  }
+}
