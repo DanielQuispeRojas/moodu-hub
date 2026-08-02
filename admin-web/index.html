@@ -64,11 +64,12 @@
 
       <div class="card p-3">
         <table class="table table-dark table-sm mb-0">
-          <thead><tr><th>Correo</th><th>Cliente</th><th>Modulos</th><th>Maq.</th><th>Vigencia</th><th>Activa</th><th></th></tr></thead>
+          <thead><tr><th>Correo</th><th>Cliente</th><th>Clave</th><th>Modulos</th><th>Maq.</th><th>Vigencia</th><th>Activa</th><th></th></tr></thead>
           <tbody>
             <tr v-for="l in licencias" :key="l.id">
               <td>{{ l.correo }}</td>
               <td>{{ l.nombre }} {{ l.apellido }}</td>
+              <td><code>{{ l.claveActivacion }}</code></td>
               <td><span v-for="m in l.modulos" :key="m" class="badge bg-secondary me-1">{{ m }}</span></td>
               <td>{{ l.maquinasPermitidas }}</td>
               <td>{{ l.vigenciaUnidad }} {{ l.vigenciaValor }}</td>
@@ -166,25 +167,32 @@
       </div>
     </div>
     <div v-if="tab==='disp'">
-      <div class="alert alert-info py-2 small" v-if="!licSeleccionada">
-        Selecciona "Ver disp." en una licencia para ver y desligar maquinas.
-      </div>
-      <div v-else class="card p-3">
-        <h6>Dispositivos de {{ licSeleccionada.correo }}</h6>
-        <table class="table table-dark table-sm mb-0">
-          <thead><tr><th>ID Hardware</th><th>Equipo</th><th>Registro</th><th>Activa</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="m in maquinas" :key="m.id">
-              <td><code>{{ m.idHardware }}</code></td>
-              <td>{{ m.nombreEquipo }}</td>
-              <td>{{ m.fechaRegistro }}</td>
-              <td>{{ m.activa ? 'Si' : 'No' }}</td>
-              <td>
-                <button v-if="m.activa" class="btn btn-sm btn-outline-danger" @click="desactivar(m)">Desligar</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="card p-3">
+        <h6>Dispositivos por licencia</h6>
+        <select class="form-select form-select-sm mb-2" v-model.number="licSelId" @change="verDisp(licencias.find(l => l.id === licSelId))">
+          <option :value="null" disabled>Selecciona una licencia...</option>
+          <option v-for="l in licencias" :key="l.id" :value="l.id">{{ l.correo }} ({{ l.maquinasPermitidas }} maq.)</option>
+        </select>
+        <div v-if="!licSeleccionada" class="alert alert-info py-2 small mb-0">
+          Elige una licencia para ver y desligar las maquinas que la consumen.
+        </div>
+        <div v-else class="table-responsive">
+          <h6 class="small text-muted">Dispositivos de {{ licSeleccionada.correo }}</h6>
+          <table class="table table-dark table-sm mb-0">
+            <thead><tr><th>ID Hardware</th><th>Equipo</th><th>Registro</th><th>Activa</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="m in maquinas" :key="m.id">
+                <td><code>{{ m.idHardware }}</code></td>
+                <td>{{ m.nombreEquipo }}</td>
+                <td>{{ m.fechaRegistro }}</td>
+                <td>{{ m.activa ? 'Si' : 'No' }}</td>
+                <td>
+                  <button v-if="m.activa" class="btn btn-sm btn-outline-danger" @click="desactivar(m)">Desligar</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -280,6 +288,7 @@ createApp({
     const paquetes = ref([])
     const maquinas = ref([])
     const licSeleccionada = ref(null)
+    const licSelId = ref(null)
     const licEditando = ref(null)
     const modEditando = ref(null)
     const paqEditando = ref(null)
@@ -297,23 +306,34 @@ createApp({
 
     async function hacerLogin() {
       error.value = ''
-      const r = await fetch(API + '/api/admin/login', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ ...login })
-      })
-      const d = await r.json()
-      if (d.ok) { token.value = d.token; localStorage.setItem('moodu-admin-token', d.token) }
-      else error.value = d.mensaje
+      try {
+        const r = await fetch(API + '/api/admin/login', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ ...login })
+        })
+        const d = await r.json()
+        if (d.ok) { token.value = d.token; localStorage.setItem('moodu-admin-token', d.token); await cargar() }
+        else error.value = d.mensaje
+      } catch (e) {
+        error.value = 'No se pudo conectar con el servidor MOODU'
+      }
     }
     function logout() { token.value=''; localStorage.removeItem('moodu-admin-token') }
 
     async function cargar() {
-      const [l, p, c] = await Promise.all([
-        fetch(API + '/api/admin/gestion/licencias', { headers: authHeaders() }).then(r=>r.json()),
-        fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json()),
-        fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json())
-      ])
-      licencias.value = l; paquetes.value = p; catalogo.value = c
+      try {
+        const [l, p, c] = await Promise.all([
+          fetch(API + '/api/admin/gestion/licencias', { headers: authHeaders() }).then(r=>r.json()),
+          fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json()),
+          fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json())
+        ])
+        licencias.value = Array.isArray(l) ? l : []
+        paquetes.value = Array.isArray(p) ? p : []
+        catalogo.value = Array.isArray(c) ? c : []
+        if (!Array.isArray(l)) error.value = 'Sesion invalida: vuelve a iniciar sesion en el servidor MOODU'
+      } catch (e) {
+        error.value = 'No se pudo conectar con el servidor MOODU'
+      }
     }
     async function crearModulo() {
       const body = { ...nuevoM, activo: true }
@@ -326,7 +346,14 @@ createApp({
     }
     async function crearLicencia() {
       const body = { ...nueva, modulos: nueva.modulos.split(',').map(s=>s.trim()).filter(Boolean) }
-      await fetch(API + '/api/admin/gestion/licencias', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
+      const res = await fetch(API + '/api/admin/gestion/licencias', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
+      const creada = await res.json()
+      // El backend autogenera la clave si se envio vacia; la mostramos al admin.
+      const clave = creada.claveActivacion || ''
+      if (clave) {
+        alert('Licencia creada.\n\nClave de activacion: ' + clave + '\n\nCorreo: ' + (creada.correo || nueva.correo) +
+              '\n\nEntreguela esta clave al cliente (tambien aparece en la columna "Clave").')
+      }
       cargar()
     }
     async function crearPaquete() {
@@ -377,10 +404,19 @@ createApp({
       cargar()
     }
     async function verDisp(l) {
+      if (!l) { maquinas.value = []; return }
       licSeleccionada.value = l
+      licSelId.value = l.id
       tab.value = 'disp'
-      const r = await fetch(API + `/api/admin/gestion/licencias/${l.id}/maquinas`, { headers: authHeaders() })
-      maquinas.value = await r.json()
+      try {
+        const r = await fetch(API + `/api/admin/gestion/licencias/${l.id}/maquinas`, { headers: authHeaders() })
+        const d = await r.json()
+        maquinas.value = Array.isArray(d) ? d : []
+        if (!Array.isArray(d)) error.value = 'Sesion invalida: vuelve a iniciar sesion en el servidor MOODU'
+      } catch (e) {
+        maquinas.value = []
+        error.value = 'No se pudo conectar con el servidor MOODU'
+      }
     }
     async function desactivar(m) {
       await fetch(API + `/api/admin/gestion/licencias/${licSeleccionada.value.id}/maquinas/${m.idHardware}/desactivar`,
@@ -411,7 +447,7 @@ createApp({
     }
 
     onMounted(() => { if (token.value) cargar() })
-    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licEditando,
+    return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId, licEditando,
       modEditando, paqEditando, catalogo,
       login, nueva, nuevoP, nuevoM, nuevaV, hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
