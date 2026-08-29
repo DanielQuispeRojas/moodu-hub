@@ -1,5 +1,4 @@
 com\idastasoft\licencias\model\ModuloCatalogo$TipoLicencia.class
-com\idastasoft\licencias\config\CorsConfig$1.class
 com\idastasoft\licencias\controller\LicenciaController.class
 com\idastasoft\licencias\model\Licencia$UnidadVigencia.class
 com\idastasoft\licencias\repository\ModuloCatalogoRepo.class
@@ -13,7 +12,6 @@ com\idastasoft\licencias\controller\AdminAuthController.class
 com\idastasoft\licencias\model\Maquina.class
 com\idastasoft\licencias\repository\VersionSistemaRepo.class
 com\idastasoft\licencias\repository\DesarrolladorRepo.class
-com\idastasoft\licencias\service\AdminTokenService.class
 com\idastasoft\licencias\service\LicenciaService.class
 com\idastasoft\licencias\service\JwtService.class
 com\idastasoft\licencias\LicenciasServerApplication.class
@@ -27,6 +25,5 @@ com\idastasoft\licencias\model\Desarrollador.class
 com\idastasoft\licencias\model\Licencia.class
 com\idastasoft\licencias\service\HubConfigService.class
 com\idastasoft\licencias\service\LicenciaService$1.class
-com\idastasoft\licencias\config\CorsConfig.class
 com\idastasoft\licencias\repository\PaqueteRepo.class
 com\idastasoft\licencias\repository\ClienteUsuarioRepo.class

@@ -1,4 +1,3 @@
-C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\config\CorsConfig.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\config\JwtAuthFilter.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\AdminAuthController.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\AdminGestionController.java
@@ -21,7 +20,6 @@ C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licenc
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\PaqueteRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\VersionSistemaRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\AdminService.java
-C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\AdminTokenService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\HubConfigService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\JwtService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\LicenciaService.java

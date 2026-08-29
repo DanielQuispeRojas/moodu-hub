@@ -51,6 +51,7 @@ public class LicenciasServerApplication {
                 .requestMatchers("/api/admin/**").authenticated()
                 // Frontend estatico (admin-web, cliente-web, swagger)
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.ico").permitAll()
+                .requestMatchers("/admin", "/admin/**", "/cliente", "/cliente/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/webjars/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .anyRequest().permitAll()
@@ -62,8 +63,25 @@ public class LicenciasServerApplication {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        // Origenes permitidos. Por defecto: el desktop MOODU (localhost:8080/5173
+        // y variantes 127.0.0.1) y 'null' para que los dashboards abiertos como
+        // archivo local (file://) sigan funcionando. En produccion se puede
+        // restringir mas via CORS_ALLOWED_ORIGINS (separados por coma).
+        String corsEnv = System.getenv("CORS_ALLOWED_ORIGINS");
+        List<String> allowed;
+        if (corsEnv != null && !corsEnv.isBlank()) {
+            allowed = List.of(corsEnv.split("\\s*,\\s*"));
+        } else {
+            allowed = List.of(
+                "http://localhost:8080",
+                "http://localhost:5173",
+                "http://127.0.0.1:8080",
+                "http://127.0.0.1:5173",
+                "null"
+            );
+        }
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOriginPatterns(List.of("*"));
+        cfg.setAllowedOriginPatterns(allowed);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
         cfg.setAllowCredentials(true);

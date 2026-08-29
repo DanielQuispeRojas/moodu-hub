@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,10 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Carga las credenciales del administrador desde admin-credentials.json.
- * Las claves se comparan con BCrypt (si el JSON tiene hash BCrypt, se usa
- * directamente; si tiene texto plano, se compara en claro para retrocompat
- * y se loggea un warning).
+ * Credenciales del administrador del MOODU Hub.
+ * Prioridad: variables de entorno (ADMIN_USER, ADMIN_PASSWORD, ADMIN_NAME) ->
+ * en produccion SIEMPRE desde entorno. Fallback: admin-credentials.json (dev).
+ * Las claves se comparan con BCrypt (si empiezan con $2a$/$2b$ se usa matches();
+ * si es texto plano se compara en claro y se loggea un warning de seguridad).
  */
 @Service
 public class AdminService {
@@ -29,6 +31,13 @@ public class AdminService {
 
     private static final String ADMIN_JSON = "admin-credentials.json";
 
+    @Value("${ADMIN_USER:}")
+    private String envUsuario;
+    @Value("${ADMIN_PASSWORD:}")
+    private String envPassword;
+    @Value("${ADMIN_NAME:Administrador MOODU}")
+    private String envNombre;
+
     private List<Map<String, String>> usuarios = new ArrayList<>();
 
     public AdminService(PasswordEncoder passwordEncoder) {
@@ -37,6 +46,32 @@ public class AdminService {
 
     @PostConstruct
     public void init() {
+        if (envUsuario != null && !envUsuario.isBlank()
+                && envPassword != null && !envPassword.isBlank()) {
+            String claveRaw = envPassword;
+            usuarios.add(Map.of(
+                "usuario", envUsuario.trim(),
+                "clave", claveRaw,
+                "nombre", envNombre == null || envNombre.isBlank() ? "Administrador MOODU" : envNombre
+            ));
+            if (!esHashBcrypt(claveRaw)) {
+                log.warn("ADVERTENCIA: ADMIN_PASSWORD no tiene hash BCrypt. "
+                    + "Se recomienda hashear antes de setearla como variable de entorno.");
+            }
+            log.info("Credenciales de administrador cargadas desde variables de entorno (ADMIN_USER='{}').",
+                envUsuario);
+            return;
+        }
+        cargarDesdeJson();
+        log.warn("USO DE admin-credentials.json para el administrador. "
+            + "En produccion se recomienda definir las variables de entorno ADMIN_USER y ADMIN_PASSWORD.");
+    }
+
+    private boolean esHashBcrypt(String clave) {
+        return clave.startsWith("$2a$") || clave.startsWith("$2b$");
+    }
+
+    private void cargarDesdeJson() {
         try (InputStream is = new ClassPathResource(ADMIN_JSON).getInputStream()) {
             JsonNode root = mapper.readTree(is);
             JsonNode lista = root.path("usuarios");
@@ -47,11 +82,9 @@ public class AdminService {
                     "clave", claveRaw,
                     "nombre", n.path("nombre").asText()
                 ));
-                // Warn si la clave no esta hasheada con BCrypt
-                if (!claveRaw.startsWith("$2a$") && !claveRaw.startsWith("$2b$")) {
-                    log.warn("ADVERTENCIA: la clave del usuario '{}' en admin-credentials.json NO esta hasheada con BCrypt. "
-                        + "Se recomienda hashear: java -cp <bcrypthash.jar> org.mindrot.jbcrypt.BCrypt hash '{}'",
-                        n.path("usuario").asText(), n.path("usuario").asText());
+                if (!esHashBcrypt(claveRaw)) {
+                    log.warn("ADVERTENCIA: la clave del usuario '{}' en admin-credentials.json NO esta hasheada con BCrypt.",
+                        n.path("usuario").asText());
                 }
             });
         } catch (Exception e) {
