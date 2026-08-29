@@ -11,7 +11,6 @@ import com.idastasoft.licencias.repository.MaquinaRepo;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
 import com.idastasoft.licencias.repository.PaqueteRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
-import com.idastasoft.licencias.service.AdminTokenService;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +26,6 @@ import java.util.UUID;
 @RequestMapping("/api/admin/gestion")
 public class AdminGestionController {
 
-    private final AdminTokenService tokenService;
     private final LicenciaRepo licenciaRepo;
     private final PaqueteRepo paqueteRepo;
     private final MaquinaRepo maquinaRepo;
@@ -37,14 +35,13 @@ public class AdminGestionController {
     private final DesarrolladorRepo desarrolladorRepo;
     private final HubConfigService hubConfigService;
 
-    public AdminGestionController(AdminTokenService tokenService, LicenciaRepo licenciaRepo,
+    public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
                                   LicenciaService licenciaService,
                                   ModuloCatalogoRepo moduloRepo,
                                   VersionSistemaRepo versionRepo,
                                   DesarrolladorRepo desarrolladorRepo,
                                   HubConfigService hubConfigService) {
-        this.tokenService = tokenService;
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -55,23 +52,14 @@ public class AdminGestionController {
         this.hubConfigService = hubConfigService;
     }
 
-    private void requiereToken(String token) {
-        if (!tokenService.valido(token)) {
-            throw new RuntimeException("No autorizado");
-        }
-    }
-
     // ─── LICENCIAS ──────────────────────────────
     @GetMapping("/licencias")
-    public ResponseEntity<?> listarLicencias(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> listarLicencias() {
         return ResponseEntity.ok(licenciaRepo.findAll());
     }
 
     @PostMapping("/licencias")
-    public ResponseEntity<?> crearLicencia(@RequestHeader("X-Admin-Token") String token,
-                                           @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> crearLicencia(@RequestBody Map<String, Object> body) {
         Licencia l = new Licencia();
         l.setNombre((String) body.getOrDefault("nombre", ""));
         l.setApellido((String) body.getOrDefault("apellido", ""));
@@ -91,9 +79,7 @@ public class AdminGestionController {
     }
 
     @PutMapping("/licencias/{id}")
-    public ResponseEntity<?> actualizarLicencia(@RequestHeader("X-Admin-Token") String token,
-                                                @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> actualizarLicencia(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Licencia l = licenciaRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrada"));
         if (body.containsKey("nombre")) l.setNombre((String) body.get("nombre"));
         if (body.containsKey("apellido")) l.setApellido((String) body.get("apellido"));
@@ -107,23 +93,19 @@ public class AdminGestionController {
     }
 
     @DeleteMapping("/licencias/{id}")
-    public ResponseEntity<?> eliminarLicencia(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> eliminarLicencia(@PathVariable Long id) {
         licenciaRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── MAQUINAS (dispositivos de una licencia) ─────────
     @GetMapping("/licencias/{id}/maquinas")
-    public ResponseEntity<?> maquinas(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> maquinas(@PathVariable Long id) {
         return ResponseEntity.ok(licenciaService.maquinasDeLicencia(id));
     }
 
     @PostMapping("/licencias/{id}/maquinas/{idHardware}/desactivar")
-    public ResponseEntity<?> desactivar(@RequestHeader("X-Admin-Token") String token,
-                                        @PathVariable Long id, @PathVariable String idHardware) {
-        requiereToken(token);
+    public ResponseEntity<?> desactivar(@PathVariable Long id, @PathVariable String idHardware) {
         boolean ok = licenciaService.desactivarMaquina(id, idHardware);
         return ResponseEntity.ok(Map.of("ok", ok, "mensaje",
             ok ? "Maquina desactivada. El equipo cerrara sesion en MOODU." : "Maquina no encontrada"));
@@ -131,72 +113,60 @@ public class AdminGestionController {
 
     // ─── PAQUETES ──────────────────────────────
     @GetMapping("/paquetes")
-    public ResponseEntity<?> listarPaquetes(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> listarPaquetes() {
         return ResponseEntity.ok(paqueteRepo.findAll());
     }
 
     @PostMapping("/paquetes")
-    public ResponseEntity<?> crearPaquete(@RequestHeader("X-Admin-Token") String token,
-                                          @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> crearPaquete(@RequestBody Map<String, Object> body) {
         Paquete p = new Paquete();
         p.setNombre((String) body.getOrDefault("nombre", ""));
         p.setDescripcion((String) body.getOrDefault("descripcion", ""));
         p.setModulos((List<String>) body.getOrDefault("modulos", List.of()));
-        p.setPrecio(java.math.BigDecimal.valueOf(Double.parseDouble(String.valueOf(body.getOrDefault("precio", 0)))));
+        p.setPrecio(BigDecimal.valueOf(Double.parseDouble(String.valueOf(body.getOrDefault("precio", 0)))));
         p.setActivo(true);
         return ResponseEntity.ok(paqueteRepo.save(p));
     }
 
     @PutMapping("/paquetes/{id}")
-    public ResponseEntity<?> actualizarPaquete(@RequestHeader("X-Admin-Token") String token,
-                                               @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> actualizarPaquete(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Paquete p = paqueteRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
         if (body.containsKey("nombre")) p.setNombre((String) body.get("nombre"));
         if (body.containsKey("descripcion")) p.setDescripcion((String) body.get("descripcion"));
         if (body.containsKey("modulos")) p.setModulos((List<String>) body.get("modulos"));
-        if (body.containsKey("precio")) p.setPrecio(java.math.BigDecimal.valueOf(Double.parseDouble(String.valueOf(body.get("precio")))));
+        if (body.containsKey("precio")) p.setPrecio(BigDecimal.valueOf(Double.parseDouble(String.valueOf(body.get("precio")))));
         if (body.containsKey("activo")) p.setActivo(Boolean.parseBoolean(String.valueOf(body.get("activo"))));
         return ResponseEntity.ok(paqueteRepo.save(p));
     }
 
     @DeleteMapping("/paquetes/{id}")
-    public ResponseEntity<?> eliminarPaquete(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> eliminarPaquete(@PathVariable Long id) {
         paqueteRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── CATALOGO DE MODULOS (oficiales y terceros) ─────────
     @GetMapping("/catalogo/modulos")
-    public ResponseEntity<?> listarCatalogo(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> listarCatalogo() {
         return ResponseEntity.ok(moduloRepo.findAll());
     }
 
     @PostMapping("/catalogo/modulos")
-    public ResponseEntity<?> crearModuloCatalogo(@RequestHeader("X-Admin-Token") String token,
-                                                 @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> crearModuloCatalogo(@RequestBody Map<String, Object> body) {
         ModuloCatalogo m = new ModuloCatalogo();
         aplicarCamposModulo(m, body);
         return ResponseEntity.ok(moduloRepo.save(m));
     }
 
     @PutMapping("/catalogo/modulos/{id}")
-    public ResponseEntity<?> actualizarModuloCatalogo(@RequestHeader("X-Admin-Token") String token,
-                                                     @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> actualizarModuloCatalogo(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         ModuloCatalogo m = moduloRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
         aplicarCamposModulo(m, body);
         return ResponseEntity.ok(moduloRepo.save(m));
     }
 
     @DeleteMapping("/catalogo/modulos/{id}")
-    public ResponseEntity<?> eliminarModuloCatalogo(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> eliminarModuloCatalogo(@PathVariable Long id) {
         moduloRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
@@ -219,15 +189,12 @@ public class AdminGestionController {
 
     // ─── VERSIONES DEL SISTEMA (instalador MOODU) ─────────
     @GetMapping("/versiones")
-    public ResponseEntity<?> listarVersiones(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> listarVersiones() {
         return ResponseEntity.ok(versionRepo.findAll());
     }
 
     @PostMapping("/versiones")
-    public ResponseEntity<?> crearVersion(@RequestHeader("X-Admin-Token") String token,
-                                         @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> crearVersion(@RequestBody Map<String, Object> body) {
         VersionSistema v = new VersionSistema();
         v.setVersion((String) body.getOrDefault("version", "0.0.0"));
         v.setUrlDescarga((String) body.getOrDefault("urlDescarga", ""));
@@ -238,9 +205,7 @@ public class AdminGestionController {
     }
 
     @PutMapping("/versiones/{id}")
-    public ResponseEntity<?> actualizarVersion(@RequestHeader("X-Admin-Token") String token,
-                                             @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> actualizarVersion(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         VersionSistema v = versionRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
         if (body.containsKey("version")) v.setVersion((String) body.get("version"));
         if (body.containsKey("urlDescarga")) v.setUrlDescarga((String) body.get("urlDescarga"));
@@ -250,23 +215,19 @@ public class AdminGestionController {
     }
 
     @DeleteMapping("/versiones/{id}")
-    public ResponseEntity<?> eliminarVersion(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> eliminarVersion(@PathVariable Long id) {
         versionRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── DESARROLLADORES (cuentas para publicar modulos terceros) ─────────
     @GetMapping("/desarrolladores")
-    public ResponseEntity<?> listarDesarrolladores(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> listarDesarrolladores() {
         return ResponseEntity.ok(desarrolladorRepo.findAll());
     }
 
     @PostMapping("/desarrolladores")
-    public ResponseEntity<?> crearDesarrollador(@RequestHeader("X-Admin-Token") String token,
-                                                @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> crearDesarrollador(@RequestBody Map<String, Object> body) {
         String correo = (String) body.getOrDefault("correo", "");
         if (desarrolladorRepo.existsByCorreo(correo)) {
             return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "El correo ya existe"));
@@ -281,9 +242,7 @@ public class AdminGestionController {
     }
 
     @PutMapping("/desarrolladores/{id}")
-    public ResponseEntity<?> actualizarDesarrollador(@RequestHeader("X-Admin-Token") String token,
-                                                    @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        requiereToken(token);
+    public ResponseEntity<?> actualizarDesarrollador(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Desarrollador d = desarrolladorRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
         if (body.containsKey("nombre")) d.setNombre((String) body.get("nombre"));
         if (body.containsKey("correo")) d.setCorreo((String) body.get("correo"));
@@ -293,18 +252,14 @@ public class AdminGestionController {
     }
 
     @DeleteMapping("/desarrolladores/{id}")
-    public ResponseEntity<?> eliminarDesarrollador(@RequestHeader("X-Admin-Token") String token, @PathVariable Long id) {
-        requiereToken(token);
+    public ResponseEntity<?> eliminarDesarrollador(@PathVariable Long id) {
         desarrolladorRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── CONFIG DEL HUB (comision) ─────────
     @GetMapping("/config")
-    public ResponseEntity<?> obtenerConfig(@RequestHeader("X-Admin-Token") String token) {
-        requiereToken(token);
+    public ResponseEntity<?> obtenerConfig() {
         return ResponseEntity.ok(Map.of("comision", hubConfigService.getComision()));
     }
 }
-
-

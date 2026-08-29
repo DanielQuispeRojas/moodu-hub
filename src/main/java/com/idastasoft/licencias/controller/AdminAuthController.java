@@ -1,7 +1,7 @@
 package com.idastasoft.licencias.controller;
 
 import com.idastasoft.licencias.service.AdminService;
-import com.idastasoft.licencias.service.AdminTokenService;
+import com.idastasoft.licencias.service.JwtService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,11 +12,11 @@ import java.util.Map;
 public class AdminAuthController {
 
     private final AdminService adminService;
-    private final AdminTokenService tokenService;
+    private final JwtService jwtService;
 
-    public AdminAuthController(AdminService adminService, AdminTokenService tokenService) {
+    public AdminAuthController(AdminService adminService, JwtService jwtService) {
         this.adminService = adminService;
-        this.tokenService = tokenService;
+        this.jwtService = jwtService;
     }
 
     @PostMapping("/login")
@@ -26,14 +26,15 @@ public class AdminAuthController {
         if (!adminService.autenticar(usuario, clave)) {
             return ResponseEntity.status(401).body(Map.of("ok", false, "mensaje", "Credenciales invalidas"));
         }
-        String token = tokenService.crear(usuario);
+        String token = jwtService.generarToken(usuario);
         return ResponseEntity.ok(Map.of("ok", true, "token", token,
             "nombre", adminService.nombreAdmin(usuario)));
     }
 
+    // Logout es stateless con JWT: el frontend simplemente borra el token.
+    // Se mantiene el endpoint por compatibilidad pero no hace nada server-side.
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader("X-Admin-Token") String token) {
-        tokenService.revocar(token);
+    public ResponseEntity<?> logout() {
         return ResponseEntity.ok(Map.of("ok", true));
     }
 }

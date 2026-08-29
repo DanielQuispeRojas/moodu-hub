@@ -5,7 +5,7 @@ services:
     name: moodu-hub
     runtime: docker
     plan: free
-    healthCheckPath: /api/catalogo/modulos
+    healthCheckPath: /actuator/health
     envVars:
       - key: DB_HOST
         fromDatabase:
@@ -29,6 +29,11 @@ services:
           property: password
       - key: PORT
         value: "9090"
+      # JWT_SECRET: DEBE configurarse como Environment Variable en el dashboard de Render
+      # (Secret Files o Environment Variables). NO hardcodear el valor real aqui.
+      # Generar con: python3 -c "import secrets; print(secrets.token_hex(48))"
+      # o con: openssl rand -hex 48
+      # Requisito: >= 32 bytes (256 bits).
 
 databases:
   - name: moodu-hub-db

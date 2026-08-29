@@ -4,6 +4,7 @@ com\idastasoft\licencias\controller\LicenciaController.class
 com\idastasoft\licencias\model\Licencia$UnidadVigencia.class
 com\idastasoft\licencias\repository\ModuloCatalogoRepo.class
 com\idastasoft\licencias\repository\LicenciaRepo.class
+com\idastasoft\licencias\config\JwtAuthFilter.class
 com\idastasoft\licencias\controller\CatalogoController.class
 com\idastasoft\licencias\controller\ClienteController.class
 com\idastasoft\licencias\model\ModuloCatalogo.class
@@ -14,6 +15,7 @@ com\idastasoft\licencias\repository\VersionSistemaRepo.class
 com\idastasoft\licencias\repository\DesarrolladorRepo.class
 com\idastasoft\licencias\service\AdminTokenService.class
 com\idastasoft\licencias\service\LicenciaService.class
+com\idastasoft\licencias\service\JwtService.class
 com\idastasoft\licencias\LicenciasServerApplication.class
 com\idastasoft\licencias\model\ClienteUsuario.class
 com\idastasoft\licencias\model\VersionSistema.class

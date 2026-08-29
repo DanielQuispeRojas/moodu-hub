@@ -302,7 +302,7 @@ createApp({
       maquinasPermitidas:3, vigenciaUnidad:'MESES', vigenciaValor:12, modulos:'' })
     const nuevoP = reactive({ nombre:'', descripcion:'', modulos:'', precio:0 })
 
-    function authHeaders() { return { 'X-Admin-Token': token.value, 'Content-Type':'application/json' } }
+    function authHeaders() { return { 'Authorization': 'Bearer ' + token.value, 'Content-Type':'application/json' } }
 
     async function hacerLogin() {
       error.value = ''
