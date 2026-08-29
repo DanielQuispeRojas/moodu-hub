@@ -15,8 +15,12 @@ com\idastasoft\licencias\repository\DesarrolladorRepo.class
 com\idastasoft\licencias\service\LicenciaService.class
 com\idastasoft\licencias\service\JwtService.class
 com\idastasoft\licencias\LicenciasServerApplication.class
+com\idastasoft\licencias\model\Valoracion.class
 com\idastasoft\licencias\model\ClienteUsuario.class
 com\idastasoft\licencias\model\VersionSistema.class
+com\idastasoft\licencias\repository\ValoracionRepo.class
+com\idastasoft\licencias\service\ValoracionService.class
+com\idastasoft\licencias\controller\ValoracionController.class
 com\idastasoft\licencias\model\Paquete.class
 com\idastasoft\licencias\controller\AdminGestionController.class
 com\idastasoft\licencias\model\ModuloCatalogo$OrigenModulo.class

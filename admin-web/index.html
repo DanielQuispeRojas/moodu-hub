@@ -56,6 +56,7 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='paq'}" @click="tab='paq'">Paquetes</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='disp'}" @click="tab='disp'">Dispositivos</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='cat'}" @click="tab='cat'">Catálogo</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='val'}" @click="tab='val'; cargarValoraciones()">Valoraciones</button></li>
     </ul>
 
     <!-- ============ LICENCIAS ============ -->
@@ -386,6 +387,13 @@
             <input v-model="nuevoM.version" class="form-control form-control-sm" placeholder="1.0.0" />
           </div>
         </div>
+        <div class="row g-2 mt-0">
+          <div class="col-4">
+            <label class="form-label small mb-0">Fecha de publicacion</label>
+            <input v-model="nuevoM.fechaPublicacion" type="date" class="form-control form-control-sm" />
+            <div class="form-hint">Se muestra en la Tienda junto al desarrollador.</div>
+          </div>
+        </div>
         <div class="section-title">Links tecnicos</div>
         <div class="row g-2">
           <div class="col-6">
@@ -476,6 +484,10 @@
                   <label class="form-label small mb-0">Desarrollador</label>
                   <input v-model="modEditando.desarrollador" class="form-control form-control-sm" />
                 </div>
+                <div class="col-3">
+                  <label class="form-label small mb-0">Fecha publicacion</label>
+                  <input v-model="modEditando.fechaPublicacion" type="date" class="form-control form-control-sm" />
+                </div>
                 <div class="col-12">
                   <label class="form-label small mb-0">Descripcion</label>
                   <textarea v-model="modEditando.descripcion" rows="1" class="form-control form-control-sm"></textarea>
@@ -502,6 +514,46 @@
             </div>
           </div>
         </div>
+      </div>
+
+    <!-- ============ VALORACIONES ============ -->
+    <div v-if="tab==='val'">
+      <div class="card p-3">
+        <h6 class="mb-2">Valoraciones y comentarios (MOODU y módulos)</h6>
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <label class="form-label small mb-0" for="val-destino">Filtrar por destino</label>
+            <select id="val-destino" v-model="valDestino" class="form-select form-select-sm" @change="cargarValoraciones">
+              <option value="">Todos</option>
+              <option value="moodu">MOODU (sistema)</option>
+              <option v-for="m in catalogo" :key="'vd'+m.clave" :value="m.clave">{{ m.clave }} · {{ m.nombre }}</option>
+            </select>
+          </div>
+          <div class="col-8 d-flex align-items-end">
+            <button class="btn btn-sm btn-outline-secondary" @click="cargarValoraciones">Recargar</button>
+            <span class="text-muted small ms-2 mb-1">Ordenadas por último cambio. Ocultar = deja de mostrarse en el desktop; Eliminar = borra definitivamente.</span>
+          </div>
+        </div>
+        <table class="table table-sm table-striped align-middle mb-0">
+          <thead><tr><th>Destino</th><th>Correo</th><th>Puntaje</th><th>Comentario</th><th>Ultimo cambio</th><th>Visible</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="v in valoraciones" :key="v.id">
+              <td><code>{{ v.destino }}</code></td>
+              <td>{{ v.correo }}</td>
+              <td>
+                <span class="text-warning">{{ '★'.repeat(v.puntaje) }}</span><span class="text-muted">{{ '★'.repeat(5 - v.puntaje) }}</span>
+              </td>
+              <td>{{ v.comentario || '—' }}</td>
+              <td>{{ v.fechaModificacion }}</td>
+              <td>{{ v.visible ? 'Si' : 'No' }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-warning me-1" @click="toggleValoracion(v)">{{ v.visible ? 'Ocultar' : 'Mostrar' }}</button>
+                <button class="btn btn-sm btn-outline-danger" @click="eliminarValoracion(v)">Eliminar</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="valoraciones.length === 0" class="text-muted small py-2">Sin valoraciones para este filtro.</div>
       </div>
     </div>
   </div>
@@ -540,6 +592,8 @@ createApp({
     const modEditando = ref(null)
     const paqEditando = ref(null)
     const catalogo = ref([])
+    const valoraciones = ref([])
+    const valDestino = ref('')
 
     const login = reactive({ usuario: '', clave: '' })
     const nueva = reactive(defaultLicencia())
@@ -552,7 +606,7 @@ createApp({
         vigenciaUnidad:'INDEFINIDO', vigenciaValor:null, activa:true, modulosSel:[], modulosExtra:'' }
     }
     function defaultModulo() {
-      return { clave:'', nombre:'', version:'1.0.0', desarrollador:'',
+      return { clave:'', nombre:'', version:'1.0.0', desarrollador:'', fechaPublicacion:'',
         origen:'OFICIAL', tipo:'GRATIS', precio:0, descripcion:'', linkDescarga:'', linkRepositorio:'' }
     }
     function reset(objeto, fabrica) {
@@ -640,6 +694,7 @@ createApp({
       const m = modEditando.value
       const body = {
         clave: m.clave, nombre: m.nombre, version: m.version, desarrollador: m.desarrollador,
+        fechaPublicacion: m.fechaPublicacion || null,
         origen: m.origen, tipo: m.tipo, precio: m.precio, descripcion: m.descripcion,
         linkDescarga: m.linkDescarga, linkRepositorio: m.linkRepositorio, activo: !!m.activo
       }
@@ -773,14 +828,45 @@ createApp({
       verDisp(licSeleccionada.value)
     }
 
+    // ─── VALORACIONES ────────────────────────────
+    async function cargarValoraciones() {
+      const params = new URLSearchParams()
+      if (valDestino.value) params.set('destino', valDestino.value)
+      const qs = params.toString() ? '?' + params.toString() : ''
+      try {
+        const r = await fetch(API + '/api/admin/gestion/valoraciones' + qs, { headers: authHeaders() })
+        const d = await r.json()
+        valoraciones.value = Array.isArray(d) ? d : []
+        if (!Array.isArray(d)) {
+          error.value = 'Sesion invalida o expirada: vuelve a iniciar sesion.'
+          token.value = ''
+          localStorage.removeItem('moodu-admin-token')
+        }
+      } catch (e) {
+        valoraciones.value = []
+        error.value = 'No se pudo conectar con el servidor MOODU. Verifica tu conexion a internet.'
+      }
+    }
+    async function toggleValoracion(v) {
+      await fetch(API + `/api/admin/gestion/valoraciones/${v.id}`, {
+        method:'PUT', headers: authHeaders(), body: JSON.stringify({ visible: !v.visible }) })
+      cargarValoraciones()
+    }
+    async function eliminarValoracion(v) {
+      if (!confirm(`Eliminar definitivamente la valoracion de ${v.correo} (${v.destino})?`)) return
+      await fetch(API + `/api/admin/gestion/valoraciones/${v.id}`, { method:'DELETE', headers: authHeaders() })
+      cargarValoraciones()
+    }
+
     onMounted(() => { if (token.value) cargar() })
     return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId,
-      licEditando, modEditando, paqEditando, catalogo, opcionesModulos,
+      licEditando, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
       login, nueva, nuevoP, nuevoM, nuevaV,
       hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
       editarLic, guardarLic, revocarLic,
-      editarPaq, guardarPaq, eliminarPaq, editarMod, guardarMod, eliminarMod }
+      editarPaq, guardarPaq, eliminarPaq, editarMod, guardarMod, eliminarMod,
+      cargarValoraciones, toggleValoracion, eliminarValoracion }
   }
 }).mount('#app')
 </script>

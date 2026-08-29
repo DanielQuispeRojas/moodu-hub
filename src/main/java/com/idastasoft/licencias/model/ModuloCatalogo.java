@@ -2,6 +2,7 @@ package com.idastasoft.licencias.model;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
  * Catalogo unificado de MOODU Hub: modulos oficiales y de terceros.
@@ -39,6 +40,9 @@ public class ModuloCatalogo {
     /** Version del modulo (configurada antes de publicar). */
     @Column(nullable = false)
     private String version = "1.0.0";
+
+    /** Fecha de publicacion del modulo (se muestra en la Tienda). */
+    private LocalDate fechaPublicacion;
 
     /** OFICIAL o TERCERO. */
     @Enumerated(EnumType.STRING)
@@ -85,6 +89,8 @@ public class ModuloCatalogo {
     public void setDesarrollador(String desarrollador) { this.desarrollador = desarrollador; }
     public String getVersion() { return version; }
     public void setVersion(String version) { this.version = version; }
+    public LocalDate getFechaPublicacion() { return fechaPublicacion; }
+    public void setFechaPublicacion(LocalDate fechaPublicacion) { this.fechaPublicacion = fechaPublicacion; }
     public OrigenModulo getOrigen() { return origen; }
     public void setOrigen(OrigenModulo origen) { this.origen = origen; }
     public TipoLicencia getTipo() { return tipo; }

@@ -13,6 +13,7 @@ import com.idastasoft.licencias.repository.PaqueteRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
+import com.idastasoft.licencias.service.ValoracionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,6 +35,7 @@ public class AdminGestionController {
     private final VersionSistemaRepo versionRepo;
     private final DesarrolladorRepo desarrolladorRepo;
     private final HubConfigService hubConfigService;
+    private final ValoracionService valoracionService;
 
     public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
@@ -41,7 +43,8 @@ public class AdminGestionController {
                                   ModuloCatalogoRepo moduloRepo,
                                   VersionSistemaRepo versionRepo,
                                   DesarrolladorRepo desarrolladorRepo,
-                                  HubConfigService hubConfigService) {
+                                  HubConfigService hubConfigService,
+                                  ValoracionService valoracionService) {
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -50,6 +53,7 @@ public class AdminGestionController {
         this.versionRepo = versionRepo;
         this.desarrolladorRepo = desarrolladorRepo;
         this.hubConfigService = hubConfigService;
+        this.valoracionService = valoracionService;
     }
 
     // ─── LICENCIAS ──────────────────────────────
@@ -178,6 +182,9 @@ public class AdminGestionController {
         if (body.containsKey("imagen")) m.setImagen((String) body.get("imagen"));
         if (body.containsKey("desarrollador")) m.setDesarrollador((String) body.get("desarrollador"));
         if (body.containsKey("version")) m.setVersion((String) body.getOrDefault("version", "1.0.0"));
+        if (body.containsKey("fechaPublicacion") && body.get("fechaPublicacion") != null) {
+            m.setFechaPublicacion(java.time.LocalDate.parse((String) body.get("fechaPublicacion")));
+        }
         if (body.containsKey("origen")) m.setOrigen(ModuloCatalogo.OrigenModulo.valueOf(((String) body.get("origen")).toUpperCase()));
         if (body.containsKey("tipo")) m.setTipo(ModuloCatalogo.TipoLicencia.valueOf(((String) body.get("tipo")).toUpperCase()));
         if (body.containsKey("precio")) m.setPrecio(BigDecimal.valueOf(Double.parseDouble(String.valueOf(body.getOrDefault("precio", 0)))));
@@ -254,6 +261,25 @@ public class AdminGestionController {
     @DeleteMapping("/desarrolladores/{id}")
     public ResponseEntity<?> eliminarDesarrollador(@PathVariable Long id) {
         desarrolladorRepo.deleteById(id);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    // ─── VALORACIONES (moderacion) ─────────
+    @GetMapping("/valoraciones")
+    public ResponseEntity<?> listarValoraciones(@RequestParam(value = "destino", required = false) String destino) {
+        return ResponseEntity.ok(valoracionService.listarAdmin(destino));
+    }
+
+    @PutMapping("/valoraciones/{id}")
+    public ResponseEntity<?> actualizarValoracion(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        boolean visible = Boolean.parseBoolean(String.valueOf(body.getOrDefault("visible", true)));
+        valoracionService.ocultar(id, visible);
+        return ResponseEntity.ok(Map.of("ok", true, "visible", visible));
+    }
+
+    @DeleteMapping("/valoraciones/{id}")
+    public ResponseEntity<?> eliminarValoracion(@PathVariable Long id) {
+        valoracionService.eliminar(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 

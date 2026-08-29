@@ -4,6 +4,7 @@ C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licenc
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\CatalogoController.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\ClienteController.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\LicenciaController.java
+C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\controller\ValoracionController.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\LicenciasServerApplication.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\ClienteUsuario.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\Desarrollador.java
@@ -11,6 +12,7 @@ C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licenc
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\Maquina.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\ModuloCatalogo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\Paquete.java
+C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\Valoracion.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\model\VersionSistema.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\ClienteUsuarioRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\DesarrolladorRepo.java
@@ -18,8 +20,10 @@ C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licenc
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\MaquinaRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\ModuloCatalogoRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\PaqueteRepo.java
+C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\ValoracionRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\repository\VersionSistemaRepo.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\AdminService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\HubConfigService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\JwtService.java
 C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\LicenciaService.java
+C:\Users\User\Desktop\Moodu\licencias-server\src\main\java\com\idastasoft\licencias\service\ValoracionService.java
