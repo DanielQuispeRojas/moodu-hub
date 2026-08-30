@@ -430,7 +430,7 @@
       <div class="card p-3">
         <h6 class="mb-2">Módulos del catálogo</h6>
         <table class="table table-sm table-striped align-middle mb-0">
-          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Valoración</th><th>Activo</th><th></th></tr></thead>
           <tbody>
             <tr v-for="m in catalogo" :key="m.id">
               <td><code>{{ m.clave }}</code></td>
@@ -439,6 +439,13 @@
               <td>{{ m.tipo }}</td>
               <td>{{ m.tipo === 'PAGA' ? '$' + m.precio : 'Gratis' }}</td>
               <td>{{ m.version }}</td>
+              <td>
+                <span v-if="promedioMod(m)" class="badge text-bg-warning" style="cursor:pointer" :title="'Ver valoraciones de ' + m.nombre" @click="verValoracionesModulo(m)">
+                  {{ '★'.repeat(Math.round(promedioMod(m).prom)) }}<span class="text-muted">{{ '★'.repeat(5 - Math.round(promedioMod(m).prom)) }}</span>
+                  {{ promedioMod(m).prom.toFixed(1) }} ({{ promedioMod(m).total }})
+                </span>
+                <span v-else class="text-muted">—</span>
+              </td>
               <td>{{ m.activo ? 'Si' : 'No' }}</td>
               <td class="text-end">
                 <button class="btn btn-sm btn-outline-info me-1" @click="editarMod(m)">Editar</button>
@@ -594,6 +601,7 @@ createApp({
     const catalogo = ref([])
     const valoraciones = ref([])
     const valDestino = ref('')
+    const valModulos = reactive({}) // clave -> {prom, total}
 
     const login = reactive({ usuario: '', clave: '' })
     const nueva = reactive(defaultLicencia())
@@ -667,6 +675,7 @@ createApp({
           token.value = ''
           localStorage.removeItem('moodu-admin-token')
         }
+        cargarValoracionesModulos()
       } catch (e) {
         error.value = 'No se pudo conectar con el servidor MOODU. Verifica tu conexion a internet.'
       }
@@ -851,10 +860,50 @@ createApp({
       await fetch(API + `/api/admin/gestion/valoraciones/${v.id}`, {
         method:'PUT', headers: authHeaders(), body: JSON.stringify({ visible: !v.visible }) })
       cargarValoraciones()
+      cargarValoracionesModulos()
     }
     async function eliminarValoracion(v) {
       if (!confirm(`Eliminar definitivamente la valoracion de ${v.correo} (${v.destino})?`)) return
       await fetch(API + `/api/admin/gestion/valoraciones/${v.id}`, { method:'DELETE', headers: authHeaders() })
+      cargarValoraciones()
+      cargarValoracionesModulos()
+    }
+
+    // ─── VALORACIONES POR MODULO (badge en Catalogo) ──────────
+    // Promedio + total de valoraciones VISIBLES de cada modulo del catalogo.
+    // Se calcula client-side agrupando por destino (el backend devuelve todas,
+    // pero el comedio que ve el cliente es solo de las visibles).
+    async function cargarValoracionesModulos() {
+      const nuevos = {}
+      const claves = (catalogo.value || []).map(m => m.clave).filter(Boolean)
+      await Promise.all(claves.map(async (clave) => {
+        try {
+          const r = await fetch(API + `/api/admin/gestion/valoraciones?destino=${encodeURIComponent(clave)}`, { headers: authHeaders() })
+          const d = await r.json()
+          const list = Array.isArray(d) ? d : []
+          const visibles = list.filter(v => v.visible !== false && typeof v.puntaje === 'number')
+          if (visibles.length > 0) {
+            const prom = visibles.reduce((a, v) => a + v.puntaje, 0) / visibles.length
+            nuevos[clave] = { prom, total: visibles.length }
+          } else {
+            nuevos[clave] = null
+          }
+        } catch (e) {
+          nuevos[clave] = null
+        }
+      }))
+      Object.keys(valModulos).forEach(k => delete valModulos[k])
+      Object.assign(valModulos, nuevos)
+    }
+    function promedioMod(m) {
+      const v = m && valModulos[m.clave]
+      return v && v.total > 0 ? v : null
+    }
+    function verValoracionesModulo(m) {
+      // Limpia el filtro y salta al tab Valoraciones viable para esa clave,
+      // mostrando asi el desglose de ese modulo.
+      valDestino.value = m.clave
+      tab.value = 'val'
       cargarValoraciones()
     }
 
@@ -865,8 +914,9 @@ createApp({
       hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
       editarLic, guardarLic, revocarLic,
-      editarPaq, guardarPaq, eliminarPaq, editarMod, guardarMod, eliminarMod,
-      cargarValoraciones, toggleValoracion, eliminarValoracion }
+      editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod,
+      cargarValoraciones, toggleValoracion, eliminarValoracion,
+      cargarValoracionesModulos, promedioMod, verValoracionesModulo }
   }
 }).mount('#app')
 </script>
