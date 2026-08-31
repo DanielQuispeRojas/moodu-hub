@@ -31,10 +31,12 @@ public class LicenciaController {
         return ResponseEntity.ok(res);
     }
 
-    /** El desktop consulta los modulos vigentes de una licencia ya validada. */
+    /** El desktop consulta los modulos vigentes de una licencia ya validada.
+     *  SOLO LECTURA: NO registra ni activa maquinas (antes usaba validar() con
+     *  idHardware "ping", que llenaba el cupo de maquinas con entradas basura). */
     @GetMapping("/estado")
     public ResponseEntity<?> estado(@RequestParam String correo, @RequestParam String claveActivacion) {
-        Map<String, Object> res = licenciaService.validar(correo, claveActivacion, "ping", "", false);
+        Map<String, Object> res = licenciaService.consultarEstado(correo, claveActivacion);
         return ResponseEntity.ok(res);
     }
 }

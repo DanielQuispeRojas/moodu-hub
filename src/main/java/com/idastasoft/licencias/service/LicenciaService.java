@@ -111,6 +111,37 @@ public class LicenciaService {
         );
     }
 
+    /**
+     * Consulta el estado de una licencia SIN registrar ni activar maquina alguna.
+     * Es el equivalente de "validar()" pero de SOLO LECTURA: no crea fila Maquina
+     * (antes el endpoint /estado usaba validar() con idHardware "ping", que llenaba
+     * el cupo de maquinas con entradas basura).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> consultarEstado(String correo, String clave) {
+        Licencia l = licenciaRepo.findByCorreoAndClaveActivacion(correo, clave).orElse(null);
+        if (l == null) {
+            return Map.of("ok", false, "mensaje",
+                "Clave invalida o licencia no activada. Comuniquese con su proveedor o adquiera una en https://moodu.com");
+        }
+        if (!l.isActiva()) {
+            return Map.of("ok", false, "mensaje", "La licencia esta desactivada. Contacte a su proveedor.");
+        }
+        if (!estaVigente(l)) {
+            return Map.of("ok", false, "mensaje", "La licencia ha expirado. Renuevela para continuar.");
+        }
+        return Map.of(
+            "ok", true,
+            "mensaje", "Licencia valida",
+            "correo", l.getCorreo(),
+            "modulos", l.getModulos(),
+            "maquinasPermitidas", l.getMaquinasPermitidas(),
+            "maquinasActivas", maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()),
+            "expiracion", calcularExpiracion(l) != null ? calcularExpiracion(l).toString() : "INDEFINIDO",
+            "vigente", true
+        );
+    }
+
     /** Desactiva una maquina (robo/venta). Devuelve true si estaba activa. */
     @Transactional
     public boolean desactivarMaquina(Long licenciaId, String idHardware) {
