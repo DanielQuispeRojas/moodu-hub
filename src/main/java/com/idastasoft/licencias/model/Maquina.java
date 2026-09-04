@@ -16,7 +16,11 @@ public class Maquina {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    /* EAGER: al listar las maquinas desde el area admin (/maquinas) no hay una Licencia
+       cargada en la sesion, y un proxy LAZY sin inicializar rompe la serializacion JSON
+       (ByteBuddyInterceptor -> 500). Con EAGER la licencia se resuelve via JOIN y el
+       JsonSerializer siempre ve un objeto real. */
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "licencia_id")
     private Licencia licencia;
 
