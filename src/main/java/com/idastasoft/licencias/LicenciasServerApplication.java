@@ -18,7 +18,9 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.ForwardedHeaderFilter;
 
+import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.boot.CommandLineRunner;
 
 @SpringBootApplication
 @EnableWebSecurity
@@ -95,5 +97,17 @@ public class LicenciasServerApplication {
         FilterRegistrationBean<ForwardedHeaderFilter> bean = new FilterRegistrationBean<>(new ForwardedHeaderFilter());
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return bean;
+    }
+
+    // R2 cost-plus: al arrancar, corrige precio de Recepción a 3500 si aún está en 1500 (instalaciones viejas)
+    @Bean
+    public CommandLineRunner actualizarPreciosCostPlus(com.idastasoft.licencias.repository.ModuloCatalogoRepo repo) {
+        return args -> {
+            var m = repo.findByClave("recepcion");
+            if (m != null && m.getPrecio() != null && m.getPrecio().compareTo(new BigDecimal("1500")) == 0) {
+                m.setPrecio(new BigDecimal("3500"));
+                repo.save(m);
+            }
+        };
     }
 }
