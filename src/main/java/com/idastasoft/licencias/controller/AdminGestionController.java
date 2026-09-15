@@ -182,8 +182,13 @@ public class AdminGestionController {
         if (body.containsKey("imagen")) m.setImagen((String) body.get("imagen"));
         if (body.containsKey("desarrollador")) m.setDesarrollador((String) body.get("desarrollador"));
         if (body.containsKey("version")) m.setVersion((String) body.getOrDefault("version", "1.0.0"));
-        if (body.containsKey("fechaPublicacion") && body.get("fechaPublicacion") != null) {
-            m.setFechaPublicacion(java.time.LocalDate.parse((String) body.get("fechaPublicacion")));
+        //Fecha de publicacion AUTOMATICA: si no viene (o viene vacia) se usa
+        //la fecha actual. Solo se respeta la enviada si trae un valor real.
+        if (body.containsKey("fechaPublicacion") && body.get("fechaPublicacion") != null
+                && !((String) body.get("fechaPublicacion")).isBlank()) {
+            m.setFechaPublicacion(java.time.LocalDate.parse(((String) body.get("fechaPublicacion")).trim()));
+        } else if (m.getFechaPublicacion() == null) {
+            m.setFechaPublicacion(java.time.LocalDate.now());
         }
         if (body.containsKey("origen")) m.setOrigen(ModuloCatalogo.OrigenModulo.valueOf(((String) body.get("origen")).toUpperCase()));
         if (body.containsKey("tipo")) m.setTipo(ModuloCatalogo.TipoLicencia.valueOf(((String) body.get("tipo")).toUpperCase()));

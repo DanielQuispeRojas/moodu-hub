@@ -391,7 +391,7 @@
           <div class="col-4">
             <label class="form-label small mb-0">Fecha de publicacion</label>
             <input v-model="nuevoM.fechaPublicacion" type="date" class="form-control form-control-sm" />
-            <div class="form-hint">Se muestra en la Tienda junto al desarrollador.</div>
+            <div class="form-hint">Automática (hoy) si la dejas vacía. Se muestra en la Tienda junto al desarrollador.</div>
           </div>
         </div>
         <div class="section-title">Links tecnicos</div>
@@ -683,7 +683,7 @@ createApp({
 
     // ─── CATALOGO ────────────────────────────────
     async function crearModulo() {
-      const body = { ...nuevoM, activo: true }
+      const body = { ...nuevoM, fechaPublicacion: nuevoM.fechaPublicacion || null, activo: true }
       const r = await fetch(API + '/api/admin/gestion/catalogo/modulos', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok && d.ok === false) error.value = tratarError(d, 'No se pudo crear el modulo')

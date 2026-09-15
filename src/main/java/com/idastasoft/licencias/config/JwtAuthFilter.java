@@ -41,24 +41,29 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = authHeader.substring(7);
 
+        //OJO: el filterChain.doFilter VA FUERA del try. Si queda dentro, una
+        //excepcion del CONTROLLER (ej. un parse de fecha en el body) cae aqui y
+        //se responde 401 "Sesion invalida" tapando el error real (bug 2026-09-15:
+        //crear modulo con fechaPublicacion vacia parecia fallo de sesion).
+        final String username;
         try {
             if (!jwtService.tokenValido(token)) {
                 responderNoAutorizado(response);
                 return;
             }
-
-            String username = jwtService.extractUsername(token);
-
-            UsernamePasswordAuthenticationToken authToken =
-                    new UsernamePasswordAuthenticationToken(username, null,
-                            List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
-            SecurityContextHolder.getContext().setAuthentication(authToken);
-
-            filterChain.doFilter(request, response);
+            username = jwtService.extractUsername(token);
         } catch (Exception e) {
             log.error("Error procesando token JWT en {}: {}", request.getRequestURI(), e.getMessage());
             responderNoAutorizado(response);
+            return;
         }
+
+        UsernamePasswordAuthenticationToken authToken =
+                new UsernamePasswordAuthenticationToken(username, null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        SecurityContextHolder.getContext().setAuthentication(authToken);
+
+        filterChain.doFilter(request, response);
     }
 
     private void responderNoAutorizado(HttpServletResponse response) throws IOException {
