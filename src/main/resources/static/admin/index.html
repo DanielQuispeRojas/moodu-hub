@@ -603,6 +603,12 @@ createApp({
     const valDestino = ref('')
     const valModulos = reactive({}) // clave -> {prom, total}
 
+    //Sesion por INACTIVIDAD (30 min): cualquier clic/tecla reinicia el conteo.
+    //El JWT de 24h queda solo como red de seguridad del backend.
+    const LIMITE_INACTIVIDAD_MS = 30 * 60 * 1000
+    let ultimaActividad = Date.now()
+    function registrarActividad() { ultimaActividad = Date.now() }
+
     const login = reactive({ usuario: '', clave: '' })
     const nueva = reactive(defaultLicencia())
     const nuevoP = reactive({ nombre:'', descripcion:'', precio:0, modulosSel:[], modulosExtra:'' })
@@ -652,7 +658,7 @@ createApp({
           body: JSON.stringify({ usuario: login.usuario, clave: login.clave })
         })
         const d = await r.json()
-        if (d.ok) { token.value = d.token; localStorage.setItem('moodu-admin-token', d.token); await cargar() }
+        if (d.ok) { token.value = d.token; localStorage.setItem('moodu-admin-token', d.token); registrarActividad(); await cargar() }
         else error.value = d.mensaje || 'Credenciales invalidas'
       } catch (e) {
         error.value = 'No se pudo conectar con el servidor MOODU. Verifica tu conexion a internet.'
@@ -907,7 +913,17 @@ createApp({
       cargarValoraciones()
     }
 
-    onMounted(() => { if (token.value) cargar() })
+    onMounted(() => {
+      if (token.value) { registrarActividad(); cargar() }
+      window.addEventListener('click', registrarActividad)
+      window.addEventListener('keydown', registrarActividad)
+      setInterval(() => {
+        if (token.value && Date.now() - ultimaActividad > LIMITE_INACTIVIDAD_MS) {
+          logout()
+          error.value = 'Sesion cerrada por inactividad (30 minutos sin actividad). Vuelve a iniciar sesion.'
+        }
+      }, 60000)
+    })
     return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId,
       licEditando, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
       login, nueva, nuevoP, nuevoM, nuevaV,
