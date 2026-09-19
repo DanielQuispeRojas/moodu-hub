@@ -1,0 +1,14 @@
+# Build (Render compila con el Dockerfile; el JAR no se versiona)
+target/
+*.class
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Datos locales (H2 de desarrollo + credenciales reales fuera del repo)
+licencias_data/
+admin-credentials.local.json
