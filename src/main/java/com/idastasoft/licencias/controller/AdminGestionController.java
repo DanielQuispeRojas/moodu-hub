@@ -3,18 +3,21 @@ package com.idastasoft.licencias.controller;
 import com.idastasoft.licencias.model.Desarrollador;
 import com.idastasoft.licencias.model.Licencia;
 import com.idastasoft.licencias.model.ModuloCatalogo;
+import com.idastasoft.licencias.model.ModuloFoto;
 import com.idastasoft.licencias.model.Paquete;
 import com.idastasoft.licencias.model.VersionSistema;
 import com.idastasoft.licencias.repository.DesarrolladorRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
+import com.idastasoft.licencias.repository.ModuloFotoRepo;
 import com.idastasoft.licencias.repository.PaqueteRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
 import com.idastasoft.licencias.service.ValoracionService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -32,6 +35,7 @@ public class AdminGestionController {
     private final MaquinaRepo maquinaRepo;
     private final LicenciaService licenciaService;
     private final ModuloCatalogoRepo moduloRepo;
+    private final ModuloFotoRepo fotoRepo;
     private final VersionSistemaRepo versionRepo;
     private final DesarrolladorRepo desarrolladorRepo;
     private final HubConfigService hubConfigService;
@@ -41,6 +45,7 @@ public class AdminGestionController {
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
                                   LicenciaService licenciaService,
                                   ModuloCatalogoRepo moduloRepo,
+                                  ModuloFotoRepo fotoRepo,
                                   VersionSistemaRepo versionRepo,
                                   DesarrolladorRepo desarrolladorRepo,
                                   HubConfigService hubConfigService,
@@ -50,6 +55,7 @@ public class AdminGestionController {
         this.maquinaRepo = maquinaRepo;
         this.licenciaService = licenciaService;
         this.moduloRepo = moduloRepo;
+        this.fotoRepo = fotoRepo;
         this.versionRepo = versionRepo;
         this.desarrolladorRepo = desarrolladorRepo;
         this.hubConfigService = hubConfigService;
@@ -63,6 +69,7 @@ public class AdminGestionController {
     }
 
     @PostMapping("/licencias")
+    @Transactional
     public ResponseEntity<?> crearLicencia(@RequestBody Map<String, Object> body) {
         Licencia l = new Licencia();
         l.setNombre((String) body.getOrDefault("nombre", ""));
@@ -71,7 +78,6 @@ public class AdminGestionController {
         String clave = (String) body.get("claveActivacion");
         l.setClaveActivacion(clave != null && !clave.isBlank() ? clave
             : UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        l.setModulos((List<String>) body.getOrDefault("modulos", List.of()));
         l.setMaquinasPermitidas(Integer.parseInt(String.valueOf(body.getOrDefault("maquinasPermitidas", 3))));
         l.setVigenciaUnidad(Licencia.UnidadVigencia.valueOf(
             ((String) body.getOrDefault("vigenciaUnidad", "MESES")).toUpperCase()));
@@ -79,21 +85,37 @@ public class AdminGestionController {
         l.setFechaInicio(LocalDateTime.now());
         l.setActiva(true);
         Licencia guardada = licenciaRepo.save(l);
-        return ResponseEntity.ok(guardada);
+        // Terminos por modulo: detalle explicito o herencia de la global.
+        Object det = body.get("modulosDetalle");
+        if (det instanceof List) {
+            licenciaService.guardarTerminos(guardada, (List<Map<String, Object>>) det);
+        } else {
+            licenciaService.heredarTerminos(guardada, (List<String>) body.getOrDefault("modulos", List.of()));
+        }
+        return ResponseEntity.ok(licenciaRepo.findById(guardada.getId()).orElse(guardada));
     }
 
     @PutMapping("/licencias/{id}")
+    @Transactional
     public ResponseEntity<?> actualizarLicencia(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Licencia l = licenciaRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrada"));
         if (body.containsKey("nombre")) l.setNombre((String) body.get("nombre"));
         if (body.containsKey("apellido")) l.setApellido((String) body.get("apellido"));
         if (body.containsKey("correo")) l.setCorreo((String) body.get("correo"));
-        if (body.containsKey("modulos")) l.setModulos((List<String>) body.get("modulos"));
         if (body.containsKey("maquinasPermitidas")) l.setMaquinasPermitidas(Integer.parseInt(String.valueOf(body.get("maquinasPermitidas"))));
         if (body.containsKey("vigenciaUnidad")) l.setVigenciaUnidad(Licencia.UnidadVigencia.valueOf(((String) body.get("vigenciaUnidad")).toUpperCase()));
         if (body.containsKey("vigenciaValor")) l.setVigenciaValor(Integer.parseInt(String.valueOf(body.get("vigenciaValor"))));
         if (body.containsKey("activa")) l.setActiva(Boolean.parseBoolean(String.valueOf(body.get("activa"))));
-        return ResponseEntity.ok(licenciaRepo.save(l));
+        licenciaRepo.save(l);
+        // Con detalle explicito manda el detalle; con lista simple se hereda
+        // la (nueva) vigencia global. Sin ninguno no se tocan los terminos.
+        Object det = body.get("modulosDetalle");
+        if (det instanceof List) {
+            licenciaService.guardarTerminos(l, (List<Map<String, Object>>) det);
+        } else if (body.containsKey("modulos")) {
+            licenciaService.heredarTerminos(l, (List<String>) body.get("modulos"));
+        }
+        return ResponseEntity.ok(licenciaRepo.findById(id).orElse(l));
     }
 
     @DeleteMapping("/licencias/{id}")
@@ -152,7 +174,12 @@ public class AdminGestionController {
     // ─── CATALOGO DE MODULOS (oficiales y terceros) ─────────
     @GetMapping("/catalogo/modulos")
     public ResponseEntity<?> listarCatalogo() {
-        return ResponseEntity.ok(moduloRepo.findAll());
+        var todos = moduloRepo.findAll();
+        for (ModuloCatalogo m : todos) {
+            m.setFotoIds(fotoRepo.findByModuloIdOrderByOrdenAscIdAsc(m.getId())
+                    .stream().map(ModuloFoto::getId).toList());
+        }
+        return ResponseEntity.ok(todos);
     }
 
     @PostMapping("/catalogo/modulos")
@@ -173,6 +200,83 @@ public class AdminGestionController {
     public ResponseEntity<?> eliminarModuloCatalogo(@PathVariable Long id) {
         moduloRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    // ─── FOTOS DEL MODULO (max 10, REQ-HUB-FOTOS-01) ─────────
+    // En BD (base64): el disco del hosting es efimero y en filesystem se
+    // perderian con cada redeploy. Tope 1 MB por foto, solo PNG/JPEG/WebP.
+    @PostMapping("/catalogo/modulos/{id}/fotos")
+    public ResponseEntity<?> subirFoto(@PathVariable Long id,
+                                       @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        if (fotoRepo.countByModuloId(id) >= 10) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Maximo 10 fotos por modulo"));
+        }
+        String mime = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+        if (!mime.equals("image/png") && !mime.equals("image/jpeg") && !mime.equals("image/webp")) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Solo PNG, JPEG o WebP"));
+        }
+        if (file.getSize() > 1024 * 1024) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Maximo 1 MB por foto"));
+        }
+        try {
+            ModuloFoto f = new ModuloFoto();
+            f.setModulo(m);
+            f.setNombre(file.getOriginalFilename() != null ? file.getOriginalFilename() : "foto");
+            f.setMime(mime);
+            f.setDatos(java.util.Base64.getEncoder().encodeToString(file.getBytes()));
+            int max = fotoRepo.findByModuloIdOrderByOrdenAscIdAsc(id).stream()
+                    .mapToInt(ModuloFoto::getOrden).max().orElse(-1);
+            f.setOrden(max + 1);
+            ModuloFoto g = fotoRepo.save(f);
+            return ResponseEntity.ok(Map.of("ok", true, "id", g.getId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "No se pudo guardar la foto"));
+        }
+    }
+
+    @GetMapping("/catalogo/modulos/{id}/fotos")
+    public ResponseEntity<?> listarFotos(@PathVariable Long id) {
+        if (!moduloRepo.existsById(id)) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        }
+        var out = fotoRepo.findByModuloIdOrderByOrdenAscIdAsc(id).stream().map(f -> Map.of(
+                "id", f.getId(), "nombre", f.getNombre(), "mime", f.getMime(), "orden", f.getOrden()));
+        return ResponseEntity.ok(out.toList());
+    }
+
+    @DeleteMapping("/catalogo/modulos/{id}/fotos/{fotoId}")
+    public ResponseEntity<?> eliminarFoto(@PathVariable Long id, @PathVariable Long fotoId) {
+        ModuloFoto f = fotoRepo.findById(fotoId).orElse(null);
+        if (f == null || !f.getModulo().getId().equals(id)) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Foto no encontrada"));
+        }
+        fotoRepo.deleteById(fotoId);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    /** Icono del modulo (upload PNG/JPEG/WebP <= 512 KB, se guarda data-URL). */
+    @PostMapping("/catalogo/modulos/{id}/icono")
+    public ResponseEntity<?> subirIcono(@PathVariable Long id,
+                                        @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        String mime = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+        if (!mime.equals("image/png") && !mime.equals("image/jpeg") && !mime.equals("image/webp")) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Solo PNG, JPEG o WebP"));
+        }
+        if (file.getSize() > 512 * 1024) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Maximo 512 KB para el icono"));
+        }
+        try {
+            String b64 = java.util.Base64.getEncoder().encodeToString(file.getBytes());
+            m.setIconoUrl("data:" + mime + ";base64," + b64);
+            moduloRepo.save(m);
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "No se pudo guardar el icono"));
+        }
     }
 
     private void aplicarCamposModulo(ModuloCatalogo m, Map<String, Object> body) {

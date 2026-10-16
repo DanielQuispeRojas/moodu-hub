@@ -36,6 +36,14 @@ public class Licencia {
     @Column(name = "modulo")
     private List<String> modulos = new ArrayList<>();
 
+    /**
+     * Terminos por modulo (REQ-HUB-MODULOS-01). Fuente de verdad cuando la
+     * licencia tiene filas; la lista legacy `modulos` queda como respaldo
+     * para licencias aun no migradas (el runner del arranque las migra).
+     */
+    @OneToMany(mappedBy = "licencia", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    private List<LicenciaModulo> detalles = new ArrayList<>();
+
     @Column(nullable = false)
     private int maquinasPermitidas = 3;
 
@@ -68,6 +76,8 @@ public class Licencia {
     public void setClaveActivacion(String claveActivacion) { this.claveActivacion = claveActivacion; }
     public List<String> getModulos() { return modulos; }
     public void setModulos(List<String> modulos) { this.modulos = modulos; }
+    public List<LicenciaModulo> getDetalles() { return detalles; }
+    public void setDetalles(List<LicenciaModulo> detalles) { this.detalles = detalles; }
     public int getMaquinasPermitidas() { return maquinasPermitidas; }
     public void setMaquinasPermitidas(int maquinasPermitidas) { this.maquinasPermitidas = maquinasPermitidas; }
     public UnidadVigencia getVigenciaUnidad() { return vigenciaUnidad; }

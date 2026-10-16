@@ -33,6 +33,17 @@ public class ModuloCatalogo {
     @Column(length = 1000)
     private String imagen;
 
+    /**
+     * Icono del modulo (data-URL PNG/JPEG/WebP <= 512 KB, o http URL).
+     * Se muestra en la Tienda junto a las fotos (REQ-HUB-FOTOS-01).
+     */
+    @Column(columnDefinition = "TEXT")
+    private String iconoUrl;
+
+    /** Ids de fotos para la galeria (no se serializan los bytes). */
+    @Transient
+    private java.util.List<Long> fotoIds;
+
     /** Desarrollador que publica (MOODU para oficiales, o un DESARROLLADOR). */
     @Column(nullable = false)
     private String desarrollador = "MOODU";
@@ -85,6 +96,10 @@ public class ModuloCatalogo {
     public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
     public String getImagen() { return imagen; }
     public void setImagen(String imagen) { this.imagen = imagen; }
+    public String getIconoUrl() { return iconoUrl; }
+    public void setIconoUrl(String iconoUrl) { this.iconoUrl = iconoUrl; }
+    public java.util.List<Long> getFotoIds() { return fotoIds; }
+    public void setFotoIds(java.util.List<Long> fotoIds) { this.fotoIds = fotoIds; }
     public String getDesarrollador() { return desarrollador; }
     public void setDesarrollador(String desarrollador) { this.desarrollador = desarrollador; }
     public String getVersion() { return version; }

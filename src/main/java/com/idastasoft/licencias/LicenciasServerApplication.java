@@ -110,4 +110,29 @@ public class LicenciasServerApplication {
             }
         };
     }
+
+    // REQ-HUB-MODULOS-01: al arrancar, migra la lista legacy `modulos` a
+    // terminos por modulo que heredan la vigencia global (idempotente: solo
+    // licencias con lista legacy y sin filas de terminos). Fuente unica: la
+    // tabla de terminos; la lista legacy se vacia al migrar.
+    @Bean
+    public CommandLineRunner migrarTerminosModulos(
+            com.idastasoft.licencias.repository.LicenciaRepo licenciaRepo,
+            com.idastasoft.licencias.service.LicenciaService licenciaService) {
+        return args -> {
+            for (var l : licenciaRepo.findAll()) {
+                try {
+                    var terms = licenciaService.detallesModulos(l);
+                    var legacy = l.getModulos();
+                    if (!terms.isEmpty() || legacy == null || legacy.isEmpty()) continue;
+                    licenciaService.heredarTerminos(l, legacy);
+                    l.setModulos(new java.util.ArrayList<>());
+                    licenciaRepo.save(l);
+                } catch (Exception e) {
+                    System.err.println("[Hub] Migracion de terminos fallida para licencia "
+                            + l.getId() + ": " + e.getMessage());
+                }
+            }
+        };
+    }
 }

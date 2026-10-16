@@ -109,7 +109,7 @@
           </div>
         </div>
 
-        <div class="section-title">Modulos incluidos</div>
+        <div class="section-title">Modulos incluidos (heredan la vigencia global; el tiempo por modulo se ajusta en Editar)</div>
         <label class="form-label small mb-1" for="lic-mods">Selecciona los módulos (claves del catálogo)</label>
         <div class="chip-row mb-2">
           <div v-for="op in opcionesModulos" :key="op.clave" class="form-check form-check-inline">
@@ -132,13 +132,16 @@
                 <td>{{ l.nombre }} {{ l.apellido }}</td>
                 <td><code>{{ l.claveActivacion }}</code></td>
                 <td>
-                  <span v-if="!l.modulos || !l.modulos.length" class="text-muted small">ninguno</span>
-                  <span v-for="m in l.modulos" :key="m" class="badge bg-secondary me-1">{{ m }}</span>
+                  <span v-if="!modsDe(l).length" class="text-muted small">ninguno</span>
+                  <span v-for="m in modsDe(l)" :key="m.clave" class="badge me-1"
+                    :class="m.vigente === false ? 'bg-danger' : 'bg-secondary'"
+                    :title="etiquetaTermino(m)">{{ m.clave }}</span>
                 </td>
                 <td>{{ l.maquinasPermitidas }}</td>
                 <td>{{ l.vigenciaUnidad === 'INDEFINIDO' ? 'Indefinido' : l.vigenciaUnidad + ' ' + l.vigenciaValor }}</td>
                 <td>{{ l.activa ? 'Si' : 'No' }}</td>
                 <td class="text-end">
+                  <button class="btn btn-sm btn-outline-primary me-1" @click="verLic(l)">Ver</button>
                   <button class="btn btn-sm btn-outline-info me-1" @click="editarLic(l)">Editar</button>
                   <button class="btn btn-sm btn-outline-secondary me-1" @click="verDisp(l)">Ver disp.</button>
                   <button class="btn btn-sm btn-outline-danger" @click="revocarLic(l)">Revocar</button>
@@ -199,18 +202,72 @@
                   </div>
                 </div>
               </div>
-              <div class="section-title">Modulos incluidos</div>
-              <div class="chip-row mb-2">
-                <div v-for="op in opcionesModulos" :key="op.clave" class="form-check form-check-inline">
+              <div class="section-title">Modulos incluidos (tiempo por modulo)</div>
+              <div class="form-hint mb-2">La licencia global es el techo: un modulo vencido deja de habilitar aunque la licencia siga vigente.</div>
+              <div v-for="op in opcionesModulos" :key="op.clave" class="border rounded p-2 mb-1">
+                <div class="form-check">
                   <input class="form-check-input" type="checkbox" :id="'lice-mod-'+op.clave" :value="op.clave" v-model="licEditando.modulosSel" />
-                  <label class="form-check-label small" :for="'lice-mod-'+op.clave">{{ op.etiqueta }}</label>
+                  <label class="form-check-label small fw-semibold" :for="'lice-mod-'+op.clave">{{ op.etiqueta }}</label>
+                </div>
+                <div v-if="licEditando.modulosSel.includes(op.clave)" class="row g-1 mt-1">
+                  <div class="col-4">
+                    <label class="form-label small mb-0">Plan</label>
+                    <select v-model="terminoDe(op.clave).plan" class="form-select form-select-sm">
+                      <option value="PERMANENTE">Permanente</option>
+                      <option value="MENSUAL">Mensual</option>
+                      <option value="ANUAL">Anual</option>
+                    </select>
+                  </div>
+                  <div class="col-3" v-if="terminoDe(op.clave).plan !== 'PERMANENTE'">
+                    <label class="form-label small mb-0">Periodos</label>
+                    <input v-model.number="terminoDe(op.clave).periodos" type="number" min="1" class="form-control form-control-sm" />
+                  </div>
+                  <div class="col-5">
+                    <label class="form-label small mb-0">Inicio</label>
+                    <input v-model="terminoDe(op.clave).fechaInicio" type="date" class="form-control form-control-sm" />
+                  </div>
                 </div>
               </div>
-              <input v-model="licEditando.modulosExtra" class="form-control form-control-sm" placeholder="Claves adicionales separadas por coma (si no estan en el catalogo)" />
+              <input v-model="licEditando.modulosExtra" class="form-control form-control-sm" placeholder="Claves adicionales separadas por coma (entran en plan Mensual x1 desde hoy)" />
             </div>
             <div class="modal-footer">
               <button class="btn btn-secondary btn-sm" @click="licEditando=null">Cancelar</button>
               <button class="btn btn-primary btn-sm" @click="guardarLic">Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL VER LICENCIA (modulos y su tiempo) -->
+      <div v-if="licViendo" class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.5)">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+          <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">Licencia #{{ licViendo.id }} · {{ licViendo.correo }}</h6></div>
+            <div class="modal-body">
+              <div class="small text-muted mb-2">
+                {{ licViendo.nombre }} {{ licViendo.apellido }} ·
+                Vigencia global: {{ licViendo.vigenciaUnidad === 'INDEFINIDO' ? 'Indefinido' : licViendo.vigenciaUnidad + ' ' + licViendo.vigenciaValor }} ·
+                Maquinas: {{ licViendo.maquinasPermitidas }}
+              </div>
+              <div v-if="!detallesDe(licViendo).length" class="alert alert-info py-2 small mb-0">Sin módulos en esta licencia.</div>
+              <div v-else class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>Módulo</th><th>Plan</th><th>Inicio</th><th>Vence</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    <tr v-for="t in detallesDe(licViendo)" :key="t.clave">
+                      <td><code>{{ t.clave }}</code></td>
+                      <td>{{ etiquetaPlan(t) }}</td>
+                      <td class="small">{{ fmtFecha(t.fechaInicio) }}</td>
+                      <td class="small">{{ t.expiracion === 'PERMANENTE' ? 'Permanente' : fmtFecha(t.expiracion) }}</td>
+                      <td><span class="badge" :class="t.vigente ? 'bg-success' : 'bg-danger'">{{ t.vigente ? 'Vigente' : 'Vencido' }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary btn-sm" @click="licViendo=null">Cerrar</button>
+              <button class="btn btn-primary btn-sm" @click="editarDesdeVer()">Editar tiempos</button>
             </div>
           </div>
         </div>
@@ -430,7 +487,7 @@
       <div class="card p-3">
         <h6 class="mb-2">Módulos del catálogo</h6>
         <table class="table table-sm table-striped align-middle mb-0">
-          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Valoración</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Fotos</th><th>Valoración</th><th>Activo</th><th></th></tr></thead>
           <tbody>
             <tr v-for="m in catalogo" :key="m.id">
               <td><code>{{ m.clave }}</code></td>
@@ -439,6 +496,11 @@
               <td>{{ m.tipo }}</td>
               <td>{{ m.tipo === 'PAGA' ? '$' + m.precio : 'Gratis' }}</td>
               <td>{{ m.version }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary" @click="abrirFotos(m)" :title="`Fotos de ${m.nombre} (${(m.fotoIds || []).length}/10)`">
+                  Fotos {{ (m.fotoIds || []).length }}/10
+                </button>
+              </td>
               <td>
                 <span v-if="promedioMod(m)" class="badge text-bg-warning" style="cursor:pointer" :title="'Ver valoraciones de ' + m.nombre" @click="verValoracionesModulo(m)">
                   {{ '★'.repeat(Math.round(promedioMod(m).prom)) }}<span class="text-muted">{{ '★'.repeat(5 - Math.round(promedioMod(m).prom)) }}</span>
@@ -508,6 +570,15 @@
                   <input v-model="modEditando.linkRepositorio" class="form-control form-control-sm" />
                 </div>
                 <div class="col-12">
+                  <label class="form-label small mb-0">Icono del módulo</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <img v-if="modEditando.iconoUrl" :src="modEditando.iconoUrl" alt="icono" style="width:48px;height:48px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px;" />
+                    <span v-else class="text-muted small">Sin icono</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" class="form-control form-control-sm" style="max-width:280px;" @change="subirIcono" />
+                  </div>
+                  <div class="form-hint">PNG/JPEG/WebP de hasta 512 KB. Se muestra en la Tienda.</div>
+                </div>
+                <div class="col-12">
                   <div class="form-check">
                     <input type="checkbox" class="form-check-input" id="modEdit-activo" v-model="modEditando.activo" />
                     <label class="form-check-label" for="modEdit-activo">Activo (visible en el catálogo público)</label>
@@ -518,6 +589,37 @@
             <div class="modal-footer">
               <button class="btn btn-secondary btn-sm" @click="modEditando=null">Cancelar</button>
               <button class="btn btn-primary btn-sm" @click="guardarMod">Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL FOTOS DEL MODULO (max 10) -->
+      <div v-if="fotoMod" class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.5)">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+          <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">Fotos de {{ fotoMod.nombre }} ({{ fotosMod.length }}/10)</h6></div>
+            <div class="modal-body">
+              <div class="d-flex gap-2 align-items-center mb-2">
+                <input type="file" accept="image/png,image/jpeg,image/webp" class="form-control form-control-sm" style="max-width:320px;" @change="subirFoto" :disabled="fotosMod.length >= 10" />
+                <span class="form-hint">PNG/JPEG/WebP de hasta 1 MB por foto.</span>
+              </div>
+              <div v-if="fotoMsg" class="alert py-1 small" :class="fotoOk ? 'alert-success' : 'alert-danger'">{{ fotoMsg }}</div>
+              <div v-if="!fotosMod.length" class="alert alert-info py-2 small mb-0">Sin fotos: suba hasta 10 para mostrar el módulo en la Tienda.</div>
+              <div v-else class="row g-2">
+                <div v-for="f in fotosMod" :key="f.id" class="col-4">
+                  <div class="card">
+                    <img :src="fotoUrl(fotoMod, f)" class="card-img-top" :alt="f.nombre" style="height:120px;object-fit:cover;" />
+                    <div class="card-body p-2 d-flex justify-content-between align-items-center">
+                      <small class="text-muted text-truncate">{{ f.nombre }}</small>
+                      <button class="btn btn-sm btn-outline-danger" @click="eliminarFoto(f)">Quitar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary btn-sm" @click="fotoMod=null">Cerrar</button>
             </div>
           </div>
         </div>
@@ -725,6 +827,99 @@ createApp({
       cargar()
     }
 
+    // ─── FOTOS E ICONO DEL MODULO (max 10 fotos, REQ-HUB-FOTOS-01) ───
+    const fotoMod = ref(null)
+    const fotosMod = ref([])
+    const fotoMsg = ref('')
+    const fotoOk = ref(true)
+    function authSolo() { return { 'Authorization': 'Bearer ' + token.value } }
+    function fotoUrl(m, f) {
+      return `${API}/api/catalogo/modulos/${encodeURIComponent(m.clave)}/fotos/${f.id}`
+    }
+    async function abrirFotos(m) {
+      fotoMod.value = m
+      fotosMod.value = []
+      fotoMsg.value = ''
+      await cargarFotos()
+    }
+    async function cargarFotos() {
+      const m = fotoMod.value
+      if (!m) return
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/fotos`, { headers: authHeaders() })
+        const d = await r.json().catch(() => ([]))
+        fotosMod.value = Array.isArray(d) ? d : []
+        // Refresca el conteo de la tabla sin recargar todo.
+        const item = catalogo.value.find(x => x.id === m.id)
+        if (item) item.fotoIds = fotosMod.value.map(f => f.id)
+      } catch (e) {
+        fotoOk.value = false
+        fotoMsg.value = 'No se pudo listar las fotos.'
+      }
+    }
+    async function subirFoto(e) {
+      fotoMsg.value = ''
+      const file = e?.target?.files?.[0]
+      if (e?.target) e.target.value = ''
+      if (!file || !fotoMod.value) return
+      if (fotosMod.value.length >= 10) {
+        fotoOk.value = false
+        fotoMsg.value = 'Máximo 10 fotos por módulo.'
+        return
+      }
+      const fd = new FormData()
+      fd.append('file', file)
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${fotoMod.value.id}/fotos`,
+          { method:'POST', headers: authSolo(), body: fd })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) {
+          fotoOk.value = false
+          fotoMsg.value = (d && d.mensaje) || 'No se pudo subir (máx. 1 MB, PNG/JPEG/WebP).'
+        } else {
+          fotoOk.value = true
+          fotoMsg.value = 'Foto subida.'
+          await cargarFotos()
+        }
+      } catch (err) {
+        fotoOk.value = false
+        fotoMsg.value = 'No se pudo subir la foto.'
+      }
+    }
+    async function eliminarFoto(f) {
+      if (!confirm(`Quitar la foto "${f.nombre}"?`)) return
+      await fetch(API + `/api/admin/gestion/catalogo/modulos/${fotoMod.value.id}/fotos/${f.id}`,
+        { method:'DELETE', headers: authHeaders() })
+      cargarFotos()
+    }
+    async function subirIcono(e) {
+      const file = e?.target?.files?.[0]
+      if (e?.target) e.target.value = ''
+      const m = modEditando.value
+      if (!file || !m) return
+      const fd = new FormData()
+      fd.append('file', file)
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/icono`,
+          { method:'POST', headers: authSolo(), body: fd })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) {
+          error.value = (d && d.mensaje) || 'No se pudo subir el icono (máx. 512 KB, PNG/JPEG/WebP).'
+        } else {
+          // Recarga el módulo para traer el iconoUrl nuevo.
+          const g = await fetch(API + `/api/admin/gestion/catalogo/modulos`, { headers: authHeaders() }).then(x=>x.json()).catch(()=>[])
+          const act = (Array.isArray(g) ? g : []).find(x => x.id === m.id)
+          if (act) {
+            modEditando.value = { ...m, iconoUrl: act.iconoUrl }
+            const item = catalogo.value.find(x => x.id === m.id)
+            if (item) item.iconoUrl = act.iconoUrl
+          }
+        }
+      } catch (err) {
+        error.value = 'No se pudo subir el icono.'
+      }
+    }
+
     // ─── LICENCIAS ───────────────────────────────
     async function crearLicencia() {
       const body = {
@@ -748,25 +943,81 @@ createApp({
       reset(nueva, defaultLicencia)
       cargar()
     }
+    // Termino heredado de la vigencia global (igual que el backend).
+    function planHeredado(l) {
+      if (l.vigenciaUnidad === 'INDEFINIDO') return { plan: 'PERMANENTE', periodos: 1 }
+      if (l.vigenciaUnidad === 'ANIO') return { plan: 'ANUAL', periodos: Math.max(1, l.vigenciaValor || 1) }
+      return { plan: 'MENSUAL', periodos: l.vigenciaUnidad === 'DIAS' ? 1 : Math.max(1, l.vigenciaValor || 1) }
+    }
+    function fechaHoyISO() {
+      const d = new Date()
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    // Terminos por modulo para el editor (de detalles o heredados).
+    function terminosIniciales(l) {
+      const map = {}
+      const dets = Array.isArray(l.detalles) ? l.detalles : []
+      for (const t of dets) {
+        if (!t || !t.clave) continue
+        map[t.clave] = {
+          plan: ['PERMANENTE', 'MENSUAL', 'ANUAL'].includes(t.plan) ? t.plan : 'MENSUAL',
+          periodos: Math.max(1, t.periodos || 1),
+          fechaInicio: String(t.fechaInicio || '').substring(0, 10) || fechaHoyISO()
+        }
+      }
+      if (!dets.length && Array.isArray(l.modulos)) {
+        const h = planHeredado(l)
+        const ini = String(l.fechaInicio || '').substring(0, 10) || fechaHoyISO()
+        for (const m of l.modulos) {
+          if (m && !map[m]) map[m] = { plan: h.plan, periodos: h.periodos, fechaInicio: ini }
+        }
+      }
+      return map
+    }
     function editarLic(l) {
       const sel = new Set(opcionesModulos.value.map(o => o.clave))
+      const terms = terminosIniciales(l)
       licEditando.value = {
         ...l,
         vigenciaUnidad: UNIDADES.includes(l.vigenciaUnidad) ? l.vigenciaUnidad : 'MESES',
         vigenciaValor: l.vigenciaValor ?? 12,
         activa: l.activa !== false,
         modulos: l.modulos || [],
-        modulosSel: (l.modulos || []).filter(m => sel.has(m)),
-        modulosExtra: (l.modulos || []).filter(m => !sel.has(m)).join(', ')
+        modulosSel: Object.keys(terms).filter(m => sel.has(m)),
+        modulosExtra: Object.keys(terms).filter(m => !sel.has(m)).join(', '),
+        terminos: terms
       }
+    }
+    // Termino del editor (lo crea con valores por defecto si es nuevo).
+    function terminoDe(clave) {
+      const l = licEditando.value
+      if (!l.terminos) l.terminos = {}
+      if (!l.terminos[clave]) {
+        const h = planHeredado(l)
+        l.terminos[clave] = { plan: h.plan, periodos: h.periodos, fechaInicio: fechaHoyISO() }
+      }
+      return l.terminos[clave]
     }
     async function guardarLic() {
       const l = licEditando.value
+      const det = []
+      for (const clave of (l.modulosSel || [])) {
+        const t = (l.terminos && l.terminos[clave]) || { plan: 'MENSUAL', periodos: 1 }
+        det.push({ clave, plan: t.plan || 'MENSUAL',
+          periodos: t.plan === 'PERMANENTE' ? 1 : Math.max(1, t.periodos || 1),
+          fechaInicio: (t.fechaInicio || fechaHoyISO()).substring(0, 10) })
+      }
+      // Extras fuera de catalogo: plan Mensual x1 desde hoy.
+      for (const m of (l.modulosExtra || '').split(',').map(s => s.trim()).filter(Boolean)) {
+        if (!det.some(d => d.clave === m)) {
+          det.push({ clave: m, plan: 'MENSUAL', periodos: 1, fechaInicio: fechaHoyISO() })
+        }
+      }
       const body = {
         nombre: l.nombre, apellido: l.apellido, correo: l.correo,
         maquinasPermitidas: l.maquinasPermitidas, vigenciaUnidad: l.vigenciaUnidad,
         activa: !!l.activa,
-        modulos: clavesDesde(l.modulosSel, l.modulosExtra)
+        modulosDetalle: det
       }
       if (l.vigenciaUnidad !== 'INDEFINIDO') body.vigenciaValor = l.vigenciaValor
       const r = await fetch(API + `/api/admin/gestion/licencias/${l.id}`, {
@@ -774,6 +1025,44 @@ createApp({
       const d = await r.json().catch(() => ({}))
       if (!r.ok && d.ok === false) error.value = tratarError(d, 'No se pudo guardar la licencia')
       else { licEditando.value = null; cargar() }
+    }
+    // ─── VER LICENCIA (modulos y su tiempo) ───
+    const licViendo = ref(null)
+    function detallesDe(l) {
+      if (Array.isArray(l?.detalles) && l.detalles.length) return l.detalles
+      // Respaldo para licencias aun no migradas: hereda la global.
+      if (Array.isArray(l?.modulos) && l.modulos.length) {
+        const h = planHeredado(l)
+        return l.modulos.map(m => ({ clave: m, plan: h.plan, periodos: h.periodos,
+          fechaInicio: l.fechaInicio, expiracion: '?', vigente: true }))
+      }
+      return []
+    }
+    function modsDe(l) {
+      const d = detallesDe(l)
+      return d.length ? d : (Array.isArray(l?.modulos) ? l.modulos.map(m => ({ clave: m, vigente: true })) : [])
+    }
+    function etiquetaPlan(t) {
+      if (t.plan === 'PERMANENTE') return 'Permanente'
+      if (t.plan === 'ANUAL') return `Anual x${t.periodos || 1}`
+      return `Mensual x${t.periodos || 1}`
+    }
+    function etiquetaTermino(m) {
+      if (!m.plan) return m.clave
+      const exp = m.expiracion && m.expiracion !== 'PERMANENTE' ? fmtFecha(m.expiracion) : 'permanente'
+      return `${m.clave}: ${etiquetaPlan(m).toLowerCase()} (vence ${exp})`
+    }
+    function fmtFecha(f) {
+      if (!f) return '—'
+      const s = String(f).substring(0, 10)
+      const p = s.split('-')
+      return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s
+    }
+    function verLic(l) { licViendo.value = l }
+    function editarDesdeVer() {
+      const l = licViendo.value
+      licViendo.value = null
+      if (l) editarLic(l)
     }
     async function revocarLic(l) {
       if (!confirm(`Revocar la licencia de ${l.correo}? El cliente perdera el acceso.`)) return
@@ -925,12 +1214,13 @@ createApp({
       }, 60000)
     })
     return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId,
-      licEditando, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
+      licEditando, licViendo, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
       login, nueva, nuevoP, nuevoM, nuevaV,
       hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
-      editarLic, guardarLic, revocarLic,
-      editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod,
+      editarLic, guardarLic, revocarLic, verLic, editarDesdeVer, terminoDe,
+      modsDe, detallesDe, etiquetaPlan, etiquetaTermino, fmtFecha,
+      editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod, fotoMod, fotosMod, fotoMsg, abrirFotos, subirFoto, eliminarFoto, subirIcono, fotoUrl,
       cargarValoraciones, toggleValoracion, eliminarValoracion,
       cargarValoracionesModulos, promedioMod, verValoracionesModulo }
   }
