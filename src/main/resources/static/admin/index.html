@@ -18,6 +18,9 @@
     .login-card { width:100%; max-width:420px; }
     .nav-tabs .nav-link { color:#4b5563; }
     .nav-tabs .nav-link.active { color:#0d6efd; }
+    /* Muestras de color del theme (4 tiras: principal, fondo app, tarjetas, texto) */
+    .muestra { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #d1d5db; margin-right:2px; vertical-align:middle; }
+    .tema-json { max-height:60vh; overflow:auto; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; padding:.6rem; }
   </style>
 </head>
 <body>
@@ -57,6 +60,7 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='disp'}" @click="tab='disp'">Dispositivos</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='cat'}" @click="tab='cat'">Catálogo</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='val'}" @click="tab='val'; cargarValoraciones()">Valoraciones</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='temas'}" @click="tab='temas'; cargarTemas()">Temas</button></li>
     </ul>
 
     <!-- ============ LICENCIAS ============ -->
@@ -665,6 +669,162 @@
         <div v-if="valoraciones.length === 0" class="text-muted small py-2">Sin valoraciones para este filtro.</div>
       </div>
     </div>
+
+    <!-- ============ TEMAS DE MOODU ============ -->
+    <div v-if="tab==='temas'">
+      <div class="card p-3 mb-3">
+        <h6 class="mb-2">Nuevo theme del catalogo (Tienda &gt; Temas)</h6>
+        <div class="section-title">Identidad</div>
+        <div class="row g-2">
+          <div class="col-4">
+            <label class="form-label small mb-0" for="tem-nombre">Nombre comercial</label>
+            <input id="tem-nombre" v-model="nuevoT.nombre" class="form-control form-control-sm" placeholder="Ej: Noche profundo" />
+            <div class="form-hint">Es lo que ve el cliente en la Tienda.</div>
+          </div>
+          <div class="col-3">
+            <label class="form-label small mb-0" for="tem-clave">Clave tecnica</label>
+            <input id="tem-clave" v-model="nuevoT.clave" class="form-control form-control-sm" placeholder="auto (noche-profundo)" />
+          </div>
+          <div class="col-3">
+            <label class="form-label small mb-0" for="tem-grupo">Grupo</label>
+            <select id="tem-grupo" v-model="nuevoT.grupo" class="form-select form-select-sm">
+              <option value="claros">Claros</option>
+              <option value="intensos">Intensos</option>
+              <option value="oscuros">Oscuros</option>
+              <option value="pastel">Pastel</option>
+            </select>
+          </div>
+          <div class="col-2">
+            <label class="form-label small mb-0" for="tem-version">Version</label>
+            <input id="tem-version" v-model="nuevoT.version" class="form-control form-control-sm" placeholder="1.0.0" />
+          </div>
+          <div class="col-12">
+            <label class="form-label small mb-0" for="tem-desc">Descripcion</label>
+            <input id="tem-desc" v-model="nuevoT.descripcion" class="form-control form-control-sm" placeholder="Para quien es este theme" />
+          </div>
+        </div>
+        <div class="section-title">Archivo del theme (.json)</div>
+        <div class="row g-2">
+          <div class="col-5">
+            <label class="form-label small mb-0" for="tem-file">Subir archivo</label>
+            <input id="tem-file" type="file" accept="application/json,.json" class="form-control form-control-sm" @change="leerTemaArchivo" />
+            <div class="form-hint">Debe traer <code>base</code> (light/dark) y los 8 colores en <code>vars</code>. El Hub lo valida y normaliza antes de publicar.</div>
+          </div>
+          <div class="col-7">
+            <label class="form-label small mb-0">Archivo cargado</label>
+            <div class="small text-muted">{{ nuevoT.nombreArchivo || 'Ninguno' }}</div>
+          </div>
+        </div>
+        <div class="mt-2 d-flex gap-2 align-items-center">
+          <button class="btn btn-primary btn-sm" @click="crearTema" :disabled="!nuevoT.nombre || !nuevoT.contenido">Guardar theme</button>
+          <span class="text-muted small">{{ temaMsg }}</span>
+        </div>
+      </div>
+
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Themes publicados</h6>
+          <button class="btn btn-sm btn-outline-secondary" @click="cargarTemas">Recargar</button>
+        </div>
+        <table class="table table-sm table-striped align-middle mb-0">
+          <thead><tr><th>Muestras</th><th>Nombre</th><th>Grupo</th><th>Base</th><th>Version</th><th>Tamano</th><th>Activo</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="t in temas" :key="t.id">
+              <td>
+                <span v-for="(c, i) in (t.muestras || [])" :key="i" class="muestra" :style="{ background: c }"></span>
+              </td>
+              <td>
+                <strong>{{ t.nombre }}</strong>
+                <div class="text-muted small"><code>{{ t.clave }}</code></div>
+              </td>
+              <td>{{ t.grupo }}</td>
+              <td>{{ t.base === 'dark' ? 'Oscuro' : 'Claro' }}</td>
+              <td>{{ t.version }}</td>
+              <td class="small">{{ t.tamano }} B</td>
+              <td>
+                <span v-if="t.activo" class="badge text-bg-success">Activo</span>
+                <span v-else class="badge text-bg-secondary">Inactivo</span>
+                <span v-if="!t.archivoOk" class="badge text-bg-danger ms-1">Archivo invalido</span>
+              </td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-secondary me-1" @click="verTema(t)">Ver</button>
+                <button class="btn btn-sm btn-outline-primary me-1" @click="editarTema(t)">Editar</button>
+                <button class="btn btn-sm btn-outline-danger" @click="eliminarTema(t)">Eliminar</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="temas.length === 0" class="text-muted small py-2">Sin themes publicados todavia.</div>
+      </div>
+
+      <div v-if="temaEditando" class="modal d-block" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header py-2">
+              <h6 class="mb-0">Editar theme</h6>
+              <button type="button" class="btn-close" @click="temaEditando=null"></button>
+            </div>
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-4">
+                  <label class="form-label small mb-0" for="ted-nombre">Nombre</label>
+                  <input id="ted-nombre" v-model="temaEditando.nombre" class="form-control form-control-sm" />
+                </div>
+                <div class="col-3">
+                  <label class="form-label small mb-0" for="ted-grupo">Grupo</label>
+                  <select id="ted-grupo" v-model="temaEditando.grupo" class="form-select form-select-sm">
+                    <option value="claros">Claros</option>
+                    <option value="intensos">Intensos</option>
+                    <option value="oscuros">Oscuros</option>
+                    <option value="pastel">Pastel</option>
+                  </select>
+                </div>
+                <div class="col-2">
+                  <label class="form-label small mb-0" for="ted-version">Version</label>
+                  <input id="ted-version" v-model="temaEditando.version" class="form-control form-control-sm" />
+                </div>
+                <div class="col-3 d-flex align-items-end">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="ted-activo" v-model="temaEditando.activo" />
+                    <label class="form-check-label small" for="ted-activo">Activo en la Tienda</label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-0" for="ted-desc">Descripcion</label>
+                  <input id="ted-desc" v-model="temaEditando.descripcion" class="form-control form-control-sm" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-0" for="ted-file">Reemplazar archivo (.json)</label>
+                  <input id="ted-file" type="file" accept="application/json,.json" class="form-control form-control-sm" @change="leerTemaArchivoEdicion" />
+                  <div class="form-hint">Si no eliges archivo se conserva el actual.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer py-2">
+              <button class="btn btn-secondary btn-sm" @click="temaEditando=null">Cancelar</button>
+              <button class="btn btn-primary btn-sm" @click="guardarTema">Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="temaVer" class="modal d-block" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header py-2">
+              <h6 class="mb-0">{{ temaVer.nombre }} <code class="small">{{ temaVer.clave }}</code></h6>
+              <button type="button" class="btn-close" @click="temaVer=null"></button>
+            </div>
+            <div class="modal-body">
+              <pre class="small mb-0 tema-json">{{ temaVer.contenido }}</pre>
+            </div>
+            <div class="modal-footer py-2">
+              <button class="btn btn-secondary btn-sm" @click="temaVer=null">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -702,6 +862,11 @@ createApp({
     const paqEditando = ref(null)
     const catalogo = ref([])
     const valoraciones = ref([])
+    const temas = ref([])
+    const temaEditando = ref(null)
+    const temaVer = ref(null)
+    const temaMsg = ref('')
+    const nuevoT = reactive(defaultTema())
     const valDestino = ref('')
     const valModulos = reactive({}) // clave -> {prom, total}
 
@@ -724,6 +889,9 @@ createApp({
     function defaultModulo() {
       return { clave:'', nombre:'', version:'1.0.0', desarrollador:'', fechaPublicacion:'',
         origen:'OFICIAL', tipo:'GRATIS', precio:0, descripcion:'', linkDescarga:'', linkRepositorio:'' }
+    }
+    function defaultTema() {
+      return { nombre:'', clave:'', grupo:'claros', version:'1.0.0', descripcion:'', contenido:'', nombreArchivo:'' }
     }
     function reset(objeto, fabrica) {
       Object.assign(objeto, fabrica())
@@ -786,6 +954,103 @@ createApp({
         cargarValoracionesModulos()
       } catch (e) {
         error.value = 'No se pudo conectar con el servidor MOODU. Verifica tu conexion a internet.'
+      }
+    }
+
+    // ─── TEMAS DE MOODU ──────────────────────────
+    // El Hub valida y normaliza el .json (mismo contrato que el desktop), asi
+    // que lo que se publica aqui siempre se puede aplicar y descargar.
+    async function cargarTemas() {
+      temaMsg.value = ''
+      try {
+        const r = await fetch(API + '/api/admin/gestion/catalogo/temas', { headers: authHeaders() })
+        const d = await r.json()
+        temas.value = Array.isArray(d) ? d : []
+      } catch (e) {
+        temaMsg.value = 'No se pudo conectar con el servidor MOODU.'
+      }
+    }
+    async function leerTemaArchivo(e) {
+      const f = e.target.files && e.target.files[0]
+      if (e.target) e.target.value = ''
+      if (!f) return
+      nuevoT.nombreArchivo = f.name
+      try {
+        nuevoT.contenido = await f.text()
+        //Si el nombre quedo vacio, se toma del propio JSON del theme.
+        if (!nuevoT.nombre) {
+          try {
+            const j = JSON.parse(nuevoT.contenido)
+            if (j && typeof j.nombre === 'string' && j.nombre) nuevoT.nombre = j.nombre.slice(0, 60)
+          } catch (_) {}
+        }
+      } catch (_) {
+        nuevoT.contenido = ''
+        nuevoT.nombreArchivo = ''
+        temaMsg.value = 'No se pudo leer el archivo.'
+      }
+    }
+    async function leerTemaArchivoEdicion(e) {
+      const f = e.target.files && e.target.files[0]
+      if (e.target) e.target.value = ''
+      if (!f) return
+      try {
+        temaEditando.value.contenido = await f.text()
+        temaMsg.value = 'Archivo nuevo listo para guardar.'
+      } catch (_) {
+        temaMsg.value = 'No se pudo leer el archivo.'
+      }
+    }
+    async function crearTema() {
+      temaMsg.value = ''
+      const r = await fetch(API + '/api/admin/gestion/catalogo/temas', {
+        method:'POST', headers: authHeaders(), body: JSON.stringify({ ...nuevoT, activo:true }) })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        temaMsg.value = tratarError(d, 'No se pudo guardar el theme')
+        return
+      }
+      reset(nuevoT, defaultTema)
+      temaMsg.value = 'Theme publicado en el catalogo.'
+      cargarTemas()
+    }
+    function editarTema(t) {
+      temaEditando.value = { ...t, activo: t.activo !== false, contenido: '' }
+      temaMsg.value = ''
+    }
+    async function guardarTema() {
+      const t = temaEditando.value
+      const body = {
+        nombre: t.nombre, grupo: t.grupo, version: t.version,
+        descripcion: t.descripcion, activo: !!t.activo
+      }
+      if (t.contenido) body.contenido = t.contenido
+      const r = await fetch(API + `/api/admin/gestion/catalogo/temas/${t.id}`, {
+        method:'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        temaMsg.value = tratarError(d, 'No se pudo guardar el theme')
+        return
+      }
+      temaEditando.value = null
+      temaMsg.value = 'Theme actualizado.'
+      cargarTemas()
+    }
+    async function eliminarTema(t) {
+      if (!confirm(`Eliminar el theme "${t.nombre}" del catalogo?`)) return
+      const r = await fetch(API + `/api/admin/gestion/catalogo/temas/${t.id}`, { method:'DELETE', headers: authHeaders() })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) temaMsg.value = tratarError(d, 'No se pudo eliminar el theme')
+      cargarTemas()
+    }
+    async function verTema(t) {
+      temaMsg.value = ''
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/temas/${t.id}/contenido`, { headers: authHeaders() })
+        const d = await r.json()
+        temaVer.value = { nombre: t.nombre, clave: t.clave, contenido: d.contenido || '(sin archivo)' }
+      } catch (e) {
+        temaMsg.value = 'No se pudo leer el archivo del theme.'
       }
     }
 
@@ -1222,7 +1487,10 @@ createApp({
       modsDe, detallesDe, etiquetaPlan, etiquetaTermino, fmtFecha,
       editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod, fotoMod, fotosMod, fotoMsg, abrirFotos, subirFoto, eliminarFoto, subirIcono, fotoUrl,
       cargarValoraciones, toggleValoracion, eliminarValoracion,
-      cargarValoracionesModulos, promedioMod, verValoracionesModulo }
+      cargarValoracionesModulos, promedioMod, verValoracionesModulo,
+      temas, temaEditando, temaVer, temaMsg, nuevoT,
+      cargarTemas, crearTema, editarTema, guardarTema, eliminarTema, verTema,
+      leerTemaArchivo, leerTemaArchivoEdicion }
   }
 }).mount('#app')
 </script>

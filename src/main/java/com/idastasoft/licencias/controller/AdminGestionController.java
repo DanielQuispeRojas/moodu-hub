@@ -5,6 +5,7 @@ import com.idastasoft.licencias.model.Licencia;
 import com.idastasoft.licencias.model.ModuloCatalogo;
 import com.idastasoft.licencias.model.ModuloFoto;
 import com.idastasoft.licencias.model.Paquete;
+import com.idastasoft.licencias.model.TemaCatalogo;
 import com.idastasoft.licencias.model.VersionSistema;
 import com.idastasoft.licencias.repository.DesarrolladorRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
@@ -12,9 +13,11 @@ import com.idastasoft.licencias.repository.MaquinaRepo;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
 import com.idastasoft.licencias.repository.ModuloFotoRepo;
 import com.idastasoft.licencias.repository.PaqueteRepo;
+import com.idastasoft.licencias.repository.TemaCatalogoRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
+import com.idastasoft.licencias.service.TemaCatalogoService;
 import com.idastasoft.licencias.service.ValoracionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,8 @@ public class AdminGestionController {
     private final DesarrolladorRepo desarrolladorRepo;
     private final HubConfigService hubConfigService;
     private final ValoracionService valoracionService;
+    private final TemaCatalogoService temaCatalogoService;
+    private final TemaCatalogoRepo temaCatalogoRepo;
 
     public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
@@ -49,7 +54,9 @@ public class AdminGestionController {
                                   VersionSistemaRepo versionRepo,
                                   DesarrolladorRepo desarrolladorRepo,
                                   HubConfigService hubConfigService,
-                                  ValoracionService valoracionService) {
+                                  ValoracionService valoracionService,
+                                  TemaCatalogoService temaCatalogoService,
+                                  TemaCatalogoRepo temaCatalogoRepo) {
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -60,6 +67,8 @@ public class AdminGestionController {
         this.desarrolladorRepo = desarrolladorRepo;
         this.hubConfigService = hubConfigService;
         this.valoracionService = valoracionService;
+        this.temaCatalogoService = temaCatalogoService;
+        this.temaCatalogoRepo = temaCatalogoRepo;
     }
 
     // ─── LICENCIAS ──────────────────────────────
@@ -390,6 +399,44 @@ public class AdminGestionController {
     public ResponseEntity<?> eliminarValoracion(@PathVariable Long id) {
         valoracionService.eliminar(id);
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    // ─── THEMAS DE MOODU (catalogo de Tienda > Temas) ─────────
+    // El archivo .json viaja en el body (lo lee el panel con FileReader): el Hub
+    // lo valida y NORMALIZA contra el mismo contrato del desktop, asi que un
+    // tema guardado aqui siempre se puede aplicar y descargar.
+    @GetMapping("/catalogo/temas")
+    public ResponseEntity<?> listarTemas() {
+        return ResponseEntity.ok(temaCatalogoService.listarTodos());
+    }
+
+    @PostMapping("/catalogo/temas")
+    public ResponseEntity<?> crearTema(@RequestBody Map<String, Object> body,
+                                       @RequestHeader(value = "X-Admin-Usuario", required = false) String usuario) {
+        Map<String, Object> r = temaCatalogoService.crear(body, usuario);
+        return Boolean.TRUE.equals(r.get("ok")) ? ResponseEntity.ok(r) : ResponseEntity.badRequest().body(r);
+    }
+
+    @PutMapping("/catalogo/temas/{id}")
+    public ResponseEntity<?> actualizarTema(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Map<String, Object> r = temaCatalogoService.actualizar(id, body);
+        return Boolean.TRUE.equals(r.get("ok")) ? ResponseEntity.ok(r) : ResponseEntity.badRequest().body(r);
+    }
+
+    @GetMapping("/catalogo/temas/{id}/contenido")
+    public ResponseEntity<?> contenidoTema(@PathVariable Long id) {
+        var r = temaCatalogoRepo.findById(id);
+        if (r.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Tema no encontrado"));
+        }
+        TemaCatalogo t = r.get();
+        return ResponseEntity.ok(Map.of("ok", true, "clave", t.getClave(), "contenido", t.getContenido()));
+    }
+
+    @DeleteMapping("/catalogo/temas/{id}")
+    public ResponseEntity<?> eliminarTema(@PathVariable Long id) {
+        Map<String, Object> r = temaCatalogoService.eliminar(id);
+        return Boolean.TRUE.equals(r.get("ok")) ? ResponseEntity.ok(r) : ResponseEntity.status(404).body(r);
     }
 
     // ─── CONFIG DEL HUB (comision) ─────────

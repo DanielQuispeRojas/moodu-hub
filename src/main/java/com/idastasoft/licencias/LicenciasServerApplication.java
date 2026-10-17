@@ -135,4 +135,16 @@ public class LicenciasServerApplication {
             }
         };
     }
+
+    // REQ-HUB-TEMAS-01: publica los 8 presets de fabrica de MOODU en el catalogo
+    // de themes (idempotente: solo si no hay ninguna fila creada por "sistema").
+    @Bean
+    public CommandLineRunner sembrarTemasFabrica(com.idastasoft.licencias.service.TemaCatalogoService service) {
+        return args -> {
+            int n = service.sembrarFabrica();
+            if (n > 0) {
+                System.out.println("[Hub] Semilla de themes de fabrica: " + n + " publicados.");
+            }
+        };
+    }
 }
