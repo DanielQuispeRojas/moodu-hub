@@ -39,4 +39,33 @@ public class LicenciaController {
         Map<String, Object> res = licenciaService.consultarEstado(correo, claveActivacion);
         return ResponseEntity.ok(res);
     }
+
+    /**
+     * Plan del marketplace Comprape (docs/comprape.md R8/R9): modo, cupo de items y
+     * cuando puede volver a cambiar su lista. SOLO LECTURA (no registra maquina),
+     * para que MOODU lo consulte seguido sin gastar cupo de maquinas.
+     */
+    @GetMapping("/comprape/estado")
+    public ResponseEntity<?> estadoComprape(@RequestParam String correo, @RequestParam String clave) {
+        return ResponseEntity.ok(licenciaService.estadoComprape(correo, clave));
+    }
+
+    /**
+     * Activa un modulo GRATUITO pedido desde la Tienda (REQ-HUB-ACTIVA-GRATIS-01).
+     *
+     * <p>Publico porque MOODU solo tiene correo + clave de activacion. El Hub
+     * <b>valida que el modulo sea realmente gratis</b>: si es de paga responde
+     * {@code ok:false} con el motivo y NO toca la licencia. Un modulo gratuito
+     * se otorga PERMANENTE.</p>
+     *
+     * <p>Responde 200 tambien en error (el escritorio lee {@code ok:false}),
+     * igual que {@code /validar}.</p>
+     */
+    @PostMapping("/activar-gratuito")
+    public ResponseEntity<?> activarGratuito(@RequestBody Map<String, Object> body) {
+        String correo = (String) body.getOrDefault("correo", "");
+        String clave = (String) body.getOrDefault("claveActivacion", "");
+        String modulo = (String) body.getOrDefault("modulo", "");
+        return ResponseEntity.ok(licenciaService.activarModuloGratuito(correo, clave, modulo));
+    }
 }

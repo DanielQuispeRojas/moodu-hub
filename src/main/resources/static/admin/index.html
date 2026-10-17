@@ -61,6 +61,7 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='cat'}" @click="tab='cat'">Catálogo</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='val'}" @click="tab='val'; cargarValoraciones()">Valoraciones</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='temas'}" @click="tab='temas'; cargarTemas()">Temas</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='cfg'}" @click="tab='cfg'; cargarContacto()">Soporte</button></li>
     </ul>
 
     <!-- ============ LICENCIAS ============ -->
@@ -207,7 +208,7 @@
                 </div>
               </div>
               <div class="section-title">Modulos incluidos (tiempo por modulo)</div>
-              <div class="form-hint mb-2">La licencia global es el techo: un modulo vencido deja de habilitar aunque la licencia siga vigente.</div>
+              <div class="form-hint mb-2">Marca los que ya tiene la licencia; desmarcar los QUITA. Para agregar uno nuevo, elige del desplegable y pulsa "+".</div>
               <div v-for="op in opcionesModulos" :key="op.clave" class="border rounded p-2 mb-1">
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" :id="'lice-mod-'+op.clave" :value="op.clave" v-model="licEditando.modulosSel" />
@@ -232,7 +233,25 @@
                   </div>
                 </div>
               </div>
-              <input v-model="licEditando.modulosExtra" class="form-control form-control-sm" placeholder="Claves adicionales separadas por coma (entran en plan Mensual x1 desde hoy)" />
+              <!-- AGREGAR modulo: desplegable del catalogo + "+" (antes era texto
+                   libre y era facil equivocarse de clave). -->
+              <div class="d-flex gap-1 mt-2">
+                <select v-model="moduloParaAgregar" class="form-select form-select-sm" aria-label="Modulo a agregar">
+                  <option value="">Agregar modulo...</option>
+                  <option v-for="op in modulosNoSeleccionados" :key="op.clave" :value="op.clave">{{ op.etiqueta }}</option>
+                </select>
+                <button class="btn btn-outline-primary btn-sm text-nowrap" :disabled="!moduloParaAgregar" @click="agregarModuloLic">
+                  <i class="bi bi-plus-lg"></i> Agregar
+                </button>
+              </div>
+              <!-- Clave manual: solo para modulos de terceros que aun no estan en
+                   el catalogo (quedan ocultas tras un desplegable, no por defecto). -->
+              <button class="btn btn-link btn-sm px-0 mt-1" @click="mostrarClaveManual = !mostrarClaveManual">
+                <i class="bi" :class="mostrarClaveManual ? 'bi-chevron-down' : 'bi-chevron-right'"></i>
+                Clave manual (modulo que no esta en el catalogo)
+              </button>
+              <input v-if="mostrarClaveManual" v-model="licEditando.modulosExtra" class="form-control form-control-sm mt-1"
+                placeholder="Claves separadas por coma (entran en plan Mensual x1 desde hoy)" />
             </div>
             <div class="modal-footer">
               <button class="btn btn-secondary btn-sm" @click="licEditando=null">Cancelar</button>
@@ -253,6 +272,62 @@
                 Vigencia global: {{ licViendo.vigenciaUnidad === 'INDEFINIDO' ? 'Indefinido' : licViendo.vigenciaUnidad + ' ' + licViendo.vigenciaValor }} ·
                 Maquinas: {{ licViendo.maquinasPermitidas }}
               </div>
+              <!-- PLAN COMPRAPE (docs/comprape.md R8/R9): cuanto publica y cada cuanto cambia -->
+              <div class="card mb-2">
+                <div class="card-header py-1 px-2 small d-flex justify-content-between align-items-center">
+                  <span><strong>Comprape</strong> · marketplace mayorista</span>
+                  <span class="badge" :class="(comprapePlan.estado||{}).plan === 'PLUS' ? 'bg-success' : 'bg-secondary'">
+                    {{ (comprapePlan.estado||{}).plan === 'PLUS' ? 'Comprape PLUS' : 'Gratuito' }}
+                  </span>
+                </div>
+                <div class="card-body p-2">
+                  <div class="small text-muted mb-2">
+                    Gratuito: hasta <strong>20</strong> items y la lista publicada cambia
+                    <strong>cada 15 días</strong>.
+                    PLUS: sin tope y la lista cambia <strong>en tiempo real</strong>
+                    (es <strong>solo mensual</strong>: no hay versión permanente).
+                  </div>
+                  <div v-if="(comprapePlan.estado||{}).itemsLimite !== null && (comprapePlan.estado||{}).itemsLimite !== undefined"
+                       class="small mb-2">
+                    Publicados: <strong>{{ comprapePlan.estado.itemsPublicados }} / {{ comprapePlan.estado.itemsLimite }}</strong>
+                    <span v-if="comprapePlan.estado.listaCongelada" class="text-warning-emphasis ms-2">
+                      <i class="bi bi-clock me-1"></i>lista congelada {{ comprapePlan.estado.diasParaCambiar }} día(s)
+                    </span>
+                  </div>
+                  <div v-else-if="(comprapePlan.estado||{}).plan === 'PLUS'" class="small mb-2">
+                    Sin tope de items.
+                    <span v-if="comprapePlan.estado.vigenciaHasta" class="text-muted ms-2">
+                      (vence {{ fmtFecha(comprapePlan.estado.vigenciaHasta) }})
+                    </span>
+                  </div>
+                  <div class="row g-2 align-items-end">
+                    <div class="col-4">
+                      <label class="form-label small mb-1">Plan</label>
+                      <select class="form-select form-select-sm" v-model="comprapeForm.plan">
+                        <option value="GRATUITO">Gratuito (20 items / 15 días)</option>
+                        <option value="PLUS">Comprape PLUS (sin tope / tiempo real)</option>
+                      </select>
+                    </div>
+                    <div class="col-4" v-if="comprapeForm.plan === 'PLUS'">
+                      <label class="form-label small mb-1">Vence (mensual)</label>
+                      <input type="date" class="form-control form-control-sm" v-model="comprapeForm.vigenciaHasta" />
+                    </div>
+                    <div class="col-4">
+                      <button class="btn btn-sm btn-primary" @click="guardarPlanComprape" :disabled="comprapeGuardando">
+                        <i v-if="comprapeGuardando" class="bi bi-hourglass-split me-1"></i>Guardar plan
+                      </button>
+                    </div>
+                  </div>
+                  <div v-if="comprapeMsg" class="small mt-2" :class="comprapeOk ? 'text-success' : 'text-danger'">
+                    {{ comprapeMsg }}
+                  </div>
+                  <div class="small text-muted mt-2">
+                    Lo que congela la ventana de 15 días es la <strong>lista</strong> (agregar/quitar items),
+                    no el precio: el precio mayorista se puede editar siempre.
+                  </div>
+                </div>
+              </div>
+
               <div v-if="!detallesDe(licViendo).length" class="alert alert-info py-2 small mb-0">Sin módulos en esta licencia.</div>
               <div v-else class="table-responsive">
                 <table class="table table-sm table-striped align-middle mb-0">
@@ -573,6 +648,45 @@
                   <label class="form-label small mb-0">Link repositorio</label>
                   <input v-model="modEditando.linkRepositorio" class="form-control form-control-sm" />
                 </div>
+                <!-- PLANES del modulo (REQ-HUB-PLANES-01): cada plan su PROPIO
+                     precio. Si no defines ninguno, la Tienda usa el Precio de
+                     arriba como plan unico (no se rompe nada). -->
+                <div class="col-12">
+                  <label class="form-label small mb-1">Planes de este módulo</label>
+                  <div class="form-hint mb-2">Define los planes que quieres ofrecer y el precio de cada uno. Si lo dejas vacio se usa el precio de arriba.</div>
+                  <div v-if="planesModulo.length" class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-2">
+                      <thead><tr><th>Plan</th><th style="width:110px;">Periodos</th><th style="width:130px;">Precio (S/)</th><th style="width:60px;"></th></tr></thead>
+                      <tbody>
+                        <tr v-for="p in planesModulo" :key="p.tipo">
+                          <td class="small">{{ etiquetaPlan(p) }}</td>
+                          <td>
+                            <input v-model.number="p.periodos" type="number" min="1" class="form-control form-control-sm"
+                              :disabled="p.tipo === 'PERMANENTE'" />
+                          </td>
+                          <td>
+                            <input v-model.number="p.precio" type="number" min="0" step="0.01" class="form-control form-control-sm" />
+                          </td>
+                          <td class="text-center">
+                            <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Quitar plan" @click="quitarPlan(p)">
+                              <i class="bi bi-x-lg"></i>
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div v-else class="text-muted small mb-2">Sin planes propios: la Tienda muestra un plan con el precio de arriba.</div>
+                  <div class="d-flex gap-1">
+                    <select v-model="planNuevo" class="form-select form-select-sm" aria-label="Plan a agregar">
+                      <option value="">Agregar plan...</option>
+                      <option v-for="t in PLANOS_LIBRES(planesModulo)" :key="t" :value="t">{{ etiquetaPlanTipo(t) }}</option>
+                    </select>
+                    <button class="btn btn-outline-primary btn-sm text-nowrap" :disabled="!planNuevo" @click="agregarPlan">
+                      <i class="bi bi-plus-lg"></i> Agregar
+                    </button>
+                  </div>
+                </div>
                 <div class="col-12">
                   <label class="form-label small mb-0">Icono del módulo</label>
                   <div class="d-flex gap-2 align-items-center">
@@ -825,6 +939,56 @@
         </div>
       </div>
     </div>
+
+    <!-- ============ SOPORTE (medios de contacto, REQ-HUB-PLANES-01) ============ -->
+    <div v-if="tab==='cfg'">
+      <div class="card p-3 mb-3">
+        <h6 class="mb-1">Medios de contacto del soporte</h6>
+        <div class="form-hint mb-3">
+          La Tienda de MOODU los muestra en el modal "Mejorar Plan", que hoy es manual
+          (el usuario escribe al soporte y tu le activas o melhora la licencia).
+          Lo que dejas vacio no se muestra al cliente.
+        </div>
+        <div v-if="contactoMsg" class="alert" :class="contactoOk ? 'alert-success' : 'alert-danger'">{{ contactoMsg }}</div>
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-wa">WhatsApp</label>
+            <input id="ct-wa" v-model="contactoForm.whatsapp" class="form-control form-control-sm" placeholder="51987654321" />
+            <div class="form-hint">Con código de país, sin signos.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-mail">Correo</label>
+            <input id="ct-mail" v-model="contactoForm.correo" class="form-control form-control-sm" placeholder="soporte@moodu.com" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-tel">Teléfono</label>
+            <input id="ct-tel" v-model="contactoForm.telefono" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-fb">Facebook (fanpage)</label>
+            <input id="ct-fb" v-model="contactoForm.fanpage" class="form-control form-control-sm" placeholder="https://facebook.com/..." />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-ig">Instagram</label>
+            <input id="ct-ig" v-model="contactoForm.instagram" class="form-control form-control-sm" placeholder="https://instagram.com/..." />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-tg">Telegram</label>
+            <input id="ct-tg" v-model="contactoForm.telegram" class="form-control form-control-sm" placeholder="usuario o enlace" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="ct-web">Sitio web</label>
+            <input id="ct-web" v-model="contactoForm.web" class="form-control form-control-sm" placeholder="https://moodu.com" />
+          </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-primary btn-sm" :disabled="guardandoContacto" @click="guardarContacto">
+            <span v-if="guardandoContacto" class="spinner-border spinner-border-sm me-1"></span>Guardar contacto
+          </button>
+          <button class="btn btn-outline-secondary btn-sm ms-1" @click="cargarContacto">Recargar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -912,6 +1076,72 @@ createApp({
       }
       return opts.sort((a, b) => a.clave.localeCompare(b.clave))
     })
+
+    // ─── Agregar modulo a la licencia con el desplegable + "+" ───
+    const moduloParaAgregar = ref('')
+    const mostrarClaveManual = ref(false)
+
+    // Solo lo que aun NO esta en la licencia (asi no se ofrecen los marcados).
+    const modulosNoSeleccionados = computed(() => {
+      if (!licEditando.value) return []
+      const sel = new Set(licEditando.value.modulosSel || [])
+      return opcionesModulos.value.filter(o => !sel.has(o.clave))
+    })
+
+    // Agrega el modulo elegido como termino MENSUAL x1 desde hoy: el admin
+    // luego cambia el plan desde el desplegable del bloque.
+    function agregarModuloLic() {
+      const clave = (moduloParaAgregar.value || '').trim()
+      if (!clave || !licEditando.value) return
+      if (!licEditando.value.modulosSel.includes(clave)) {
+        licEditando.value.modulosSel.push(clave)
+      }
+      terminoDe(clave)
+      moduloParaAgregar.value = ''
+    }
+
+    // ─── MEDIOS DE CONTACTO del soporte (REQ-HUB-PLANES-01) ───
+    const contactoForm = reactive({ whatsapp:'', correo:'', telefono:'', fanpage:'', telegram:'', instagram:'', web:'' })
+    const contactoMsg = ref('')
+    const contactoOk = ref(true)
+    const guardandoContacto = ref(false)
+
+    async function cargarContacto() {
+      if (!token.value) return
+      contactoMsg.value = ''
+      try {
+        const r = await fetch(API + '/api/admin/gestion/config/contacto', { headers: authSolo() })
+        const d = await r.json().catch(() => ({}))
+        const c = (d && d.contacto) || {}
+        for (const k of Object.keys(contactoForm)) contactoForm[k] = c[k] || ''
+      } catch (e) {
+        contactoOk.value = false
+        contactoMsg.value = 'No se pudo cargar el contacto.'
+      }
+    }
+
+    async function guardarContacto() {
+      guardandoContacto.value = true
+      contactoMsg.value = ''
+      try {
+        const r = await fetch(API + '/api/admin/gestion/config/contacto', {
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ contacto: { ...contactoForm } })
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) {
+          contactoOk.value = false
+          contactoMsg.value = tratarError(d, 'No se pudo guardar el contacto')
+        } else {
+          contactoOk.value = true
+          contactoMsg.value = 'Medios de contacto guardados. La Tienda los muestra en "Mejorar Plan".'
+        }
+      } catch (e) {
+        contactoOk.value = false
+        contactoMsg.value = 'No se pudo guardar el contacto.'
+      } finally {
+        guardandoContacto.value = false
+      }
+    }
 
     function authHeaders() { return { 'Authorization': 'Bearer ' + token.value, 'Content-Type':'application/json' } }
 
@@ -1069,8 +1299,87 @@ createApp({
       if (!r.ok && d.ok === false) error.value = tratarError(d, 'No se pudo publicar la version')
       else { reset(nuevaV, () => ({ version:'', urlDescarga:'', notas:'' })); }
     }
-    function editarMod(m) {
+    async function editarMod(m) {
       modEditando.value = { ...m, activo: m.activo !== false }
+      // Los planes son tabla aparte (modulo_plan): se piden al backend, no
+      // vienen en el listado del catalogo.
+      planesModulo.value = []
+      planNuevo.value = ''
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/planes`, { headers: authSolo() })
+        const d = await r.json().catch(() => [])
+        if (Array.isArray(d)) planesModulo.value = d.map(p => ({ ...p }))
+      } catch (e) { /* sin planes propios: la Tienda sintetiza uno */ }
+    }
+
+    // ─── PLANES del modulo (REQ-HUB-PLANES-01) ───────────────
+    const planesModulo = ref([])
+    const planNuevo = ref('')
+    const TIPOS_PLAN = ['MENSUAL', 'ANUAL', 'PERMANENTE']
+
+    function etiquetaPlanTipo(t) {
+      return t === 'MENSUAL' ? 'Mensual' : (t === 'ANUAL' ? 'Anual' : 'Permanente')
+    }
+    function etiquetaPlan(p) {
+      const base = etiquetaPlanTipo(p.tipo)
+      if (p.tipo === 'PERMANENTE') return base
+      const n = Math.max(1, Number(p.periodos) || 1)
+      return n === 1 ? base : base + ' x' + n
+    }
+    // Solo los tipos que el modulo aun NO tiene (uno por tipo).
+    function PLANOS_LIBRES(lista) {
+      const usados = new Set(lista.map(p => p.tipo))
+      return TIPOS_PLAN.filter(t => !usados.has(t))
+    }
+
+    async function guardarPlanApi(p) {
+      const m = modEditando.value
+      if (!m) return false
+      const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/planes`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ tipo: p.tipo, periodos: Number(p.periodos) || 1, precio: Number(p.precio) || 0 })
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.ok === false) {
+        error.value = (d && d.mensaje) || 'No se pudo guardar el plan'
+        return false
+      }
+      return true
+    }
+
+    async function agregarPlan() {
+      const tipo = planNuevo.value
+      if (!tipo || !modEditando.value) return
+      const nuevo = { tipo, periodos: 1, precio: Number(modEditando.value.precio) || 0 }
+      if (await guardarPlanApi(nuevo)) {
+        planesModulo.value.push(nuevo)
+        planNuevo.value = ''
+      }
+    }
+
+    // Los cambios de periodo/precio de la tabla se aplican al guardar el modulo.
+    async function guardarPlanesEditados() {
+      if (!modEditando.value) return
+      for (const p of planesModulo.value) {
+        await fetch(API + `/api/admin/gestion/catalogo/modulos/${modEditando.value.id}/planes`, {
+          method: 'POST', headers: authHeaders(),
+          body: JSON.stringify({ tipo: p.tipo, periodos: Math.max(1, Number(p.periodos) || 1), precio: Number(p.precio) || 0 })
+        })
+      }
+    }
+
+    async function quitarPlan(p) {
+      const m = modEditando.value
+      if (!m || !p.id) { planesModulo.value = planesModulo.value.filter(x => x !== p); return }
+      const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/planes/${p.id}`, {
+        method: 'DELETE', headers: authSolo()
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.ok === false) {
+        error.value = (d && d.mensaje) || 'No se pudo quitar el plan'
+        return
+      }
+      planesModulo.value = planesModulo.value.filter(x => x !== p)
     }
     async function guardarMod() {
       const m = modEditando.value
@@ -1084,7 +1393,12 @@ createApp({
         method:'PUT', headers: authHeaders(), body: JSON.stringify(body) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok && d.ok === false) error.value = tratarError(d, 'No se pudo guardar el modulo')
-      else { modEditando.value = null; cargar() }
+      else {
+        // Los planes editados en la tabla se aplican junto con el modulo.
+        await guardarPlanesEditados()
+        modEditando.value = null
+        cargar()
+      }
     }
     async function eliminarMod(m) {
       if (!confirm(`Eliminar el módulo "${m.nombre}" (clave ${m.clave}) del catálogo?`)) return
@@ -1221,10 +1535,14 @@ createApp({
     // Terminos por modulo para el editor (de detalles o heredados).
     function terminosIniciales(l) {
       const map = {}
+      // OJO: el backend expone la clave como "moduloClave" y ahora tambien como
+      // alias "clave"; leemos cualquiera de las dos para no depender del alias.
       const dets = Array.isArray(l.detalles) ? l.detalles : []
       for (const t of dets) {
-        if (!t || !t.clave) continue
-        map[t.clave] = {
+        if (!t) continue
+        const c = t.clave || t.moduloClave
+        if (!c) continue
+        map[c] = {
           plan: ['PERMANENTE', 'MENSUAL', 'ANUAL'].includes(t.plan) ? t.plan : 'MENSUAL',
           periodos: Math.max(1, t.periodos || 1),
           fechaInicio: String(t.fechaInicio || '').substring(0, 10) || fechaHoyISO()
@@ -1248,10 +1566,15 @@ createApp({
         vigenciaValor: l.vigenciaValor ?? 12,
         activa: l.activa !== false,
         modulos: l.modulos || [],
+        // Lo que tiene la licencia queda MARCADO: `terms` sale de `detalles`
+        // (el Hub lo devuelve EAGER). Antes se leia t.clave de un campo que no
+        // existe (es `moduloClave`), por eso aparecian todos desmarcados.
         modulosSel: Object.keys(terms).filter(m => sel.has(m)),
         modulosExtra: Object.keys(terms).filter(m => !sel.has(m)).join(', '),
         terminos: terms
       }
+      moduloParaAgregar.value = ''
+      mostrarClaveManual.value = false
     }
     // Termino del editor (lo crea con valores por defecto si es nuevo).
     function terminoDe(clave) {
@@ -1317,13 +1640,59 @@ createApp({
       const exp = m.expiracion && m.expiracion !== 'PERMANENTE' ? fmtFecha(m.expiracion) : 'permanente'
       return `${m.clave}: ${etiquetaPlan(m).toLowerCase()} (vence ${exp})`
     }
+    // ─── PLAN COMPRAPE (docs/comprape.md R8/R9) ───
+    // El Hub es la verdad: el panel solo lo configura y lo muestra.
+    const comprapePlan = ref({ estado: null })
+    const comprapeForm = ref({ plan: 'GRATUITO', vigenciaHasta: '' })
+    const comprapeMsg = ref('')
+    const comprapeOk = ref(true)
+    const comprapeGuardando = ref(false)
+    /** Fecha de hoy + un mes (PLUS es mensual y no hay version permanente). */
+    function mesDesdeHoy() {
+      const d = new Date(); d.setMonth(d.getMonth() + 1)
+      return d.toISOString().substring(0, 10)
+    }
+    async function cargarPlanComprape(id) {
+      comprapeMsg.value = ''; comprapeOk.value = true
+      try {
+        const r = await fetch(API + `/api/admin/gestion/licencias/${id}/comprape`, { headers: authSolo() })
+        const e = await r.json()
+        if (r.status === 401 || r.status === 403) throw new Error('Sesion expirada: vuelve a entrar')
+        comprapePlan.value = { estado: e }
+        comprapeForm.value = { plan: e.plan || 'GRATUITO', vigenciaHasta: (e.vigenciaHasta || '').substring(0, 10) || mesDesdeHoy() }
+      } catch (err) {
+        comprapeOk.value = false
+        comprapeMsg.value = err?.message || 'No se pudo leer el plan de Comprape'
+        comprapePlan.value = { estado: null }
+      }
+    }
+    async function guardarPlanComprape() {
+      if (!licViendo.value) return
+      comprapeGuardando.value = true; comprapeMsg.value = ''; comprapeOk.value = true
+      try {
+        const body = { plan: comprapeForm.value.plan }
+        if (comprapeForm.value.plan === 'PLUS') {
+          if (!comprapeForm.value.vigenciaHasta) throw new Error('Indica cuando vence el mes de PLUS')
+          body.vigenciaHasta = comprapeForm.value.vigenciaHasta + 'T23:59'
+        }
+        const r = await fetch(API + `/api/admin/gestion/licencias/${licViendo.value.id}/comprape`,
+          { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+        const d = await r.json()
+        if (!r.ok || d.ok === false) throw new Error(d.mensaje || 'No se pudo guardar el plan')
+        comprapeMsg.value = 'Plan de Comprape guardado'
+        await cargarPlanComprape(licViendo.value.id)
+      } catch (err) {
+        comprapeOk.value = false
+        comprapeMsg.value = err?.message || 'No se pudo guardar el plan'
+      } finally { comprapeGuardando.value = false }
+    }
     function fmtFecha(f) {
       if (!f) return '—'
       const s = String(f).substring(0, 10)
       const p = s.split('-')
       return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s
     }
-    function verLic(l) { licViendo.value = l }
+    function verLic(l) { licViendo.value = l; if (l && l.id) cargarPlanComprape(l.id) }
     function editarDesdeVer() {
       const l = licViendo.value
       licViendo.value = null
@@ -1480,12 +1849,17 @@ createApp({
     })
     return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId,
       licEditando, licViendo, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
+      moduloParaAgregar, mostrarClaveManual, modulosNoSeleccionados, agregarModuloLic,
       login, nueva, nuevoP, nuevoM, nuevaV,
       hacerLogin, logout, cargar,
       crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
       editarLic, guardarLic, revocarLic, verLic, editarDesdeVer, terminoDe,
       modsDe, detallesDe, etiquetaPlan, etiquetaTermino, fmtFecha,
+      comprapePlan, comprapeForm, comprapeMsg, comprapeOk, comprapeGuardando,
+      cargarPlanComprape, guardarPlanComprape,
       editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod, fotoMod, fotosMod, fotoMsg, abrirFotos, subirFoto, eliminarFoto, subirIcono, fotoUrl,
+      planesModulo, planNuevo, PLANOS_LIBRES, etiquetaPlan, etiquetaPlanTipo, agregarPlan, quitarPlan, guardarPlanesEditados,
+      contactoForm, contactoMsg, contactoOk, guardandoContacto, cargarContacto, guardarContacto,
       cargarValoraciones, toggleValoracion, eliminarValoracion,
       cargarValoracionesModulos, promedioMod, verValoracionesModulo,
       temas, temaEditando, temaVer, temaMsg, nuevoT,

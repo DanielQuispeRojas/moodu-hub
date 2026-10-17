@@ -17,6 +17,10 @@ import com.idastasoft.licencias.repository.TemaCatalogoRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
+import com.idastasoft.licencias.service.PlanComprapeService;
+import com.idastasoft.licencias.model.HubContacto;
+import com.idastasoft.licencias.service.ContactoService;
+import com.idastasoft.licencias.service.ModuloPlanService;
 import com.idastasoft.licencias.service.TemaCatalogoService;
 import com.idastasoft.licencias.service.ValoracionService;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -45,6 +50,9 @@ public class AdminGestionController {
     private final ValoracionService valoracionService;
     private final TemaCatalogoService temaCatalogoService;
     private final TemaCatalogoRepo temaCatalogoRepo;
+    private final PlanComprapeService planComprapeService;
+    private final ModuloPlanService planService;
+    private final ContactoService contactoService;
 
     public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
@@ -56,7 +64,10 @@ public class AdminGestionController {
                                   HubConfigService hubConfigService,
                                   ValoracionService valoracionService,
                                   TemaCatalogoService temaCatalogoService,
-                                  TemaCatalogoRepo temaCatalogoRepo) {
+                                  TemaCatalogoRepo temaCatalogoRepo,
+                                   PlanComprapeService planComprapeService,
+                                   ModuloPlanService planService,
+                                   ContactoService contactoService) {
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -69,12 +80,37 @@ public class AdminGestionController {
         this.valoracionService = valoracionService;
         this.temaCatalogoService = temaCatalogoService;
         this.temaCatalogoRepo = temaCatalogoRepo;
+        this.planComprapeService = planComprapeService;
+        this.planService = planService;
+        this.contactoService = contactoService;
     }
 
     // ─── LICENCIAS ──────────────────────────────
     @GetMapping("/licencias")
     public ResponseEntity<?> listarLicencias() {
         return ResponseEntity.ok(licenciaRepo.findAll());
+    }
+
+    /**
+     * Plan del marketplace Comprape de una licencia (docs/comprape.md R8/R9).
+     * El admin contractor/cambia el plan; PLUS es mensual y SIN permanente, por eso
+     * la vigencia es obligatoria y futura cuando se contrata PLUS.
+     */
+    @GetMapping("/licencias/{id}/comprape")
+    public ResponseEntity<?> verPlanComprape(@PathVariable Long id) {
+        return ResponseEntity.ok(planComprapeService.verPlan(id));
+    }
+
+    @PutMapping("/licencias/{id}/comprape")
+    @Transactional
+    public ResponseEntity<?> guardarPlanComprape(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String plan = (String) body.get("plan");
+        String vigencia = (String) body.get("vigenciaHasta");
+        try {
+            return ResponseEntity.ok(planComprapeService.guardarPlan(id, plan, vigencia));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.ok(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     @PostMapping("/licencias")
@@ -187,6 +223,7 @@ public class AdminGestionController {
         for (ModuloCatalogo m : todos) {
             m.setFotoIds(fotoRepo.findByModuloIdOrderByOrdenAscIdAsc(m.getId())
                     .stream().map(ModuloFoto::getId).toList());
+            m.setPlanes(planService.planesPublicos(m.getId(), m));
         }
         return ResponseEntity.ok(todos);
     }
@@ -209,6 +246,70 @@ public class AdminGestionController {
     public ResponseEntity<?> eliminarModuloCatalogo(@PathVariable Long id) {
         moduloRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    // ─── MEDIOS DE CONTACTO del soporte (REQ-HUB-PLANES-01) ───────
+    // La Tienda los muestra en el modal "Mejorar Plan". Viven en BD
+    // (hub_contacto): el disco del hosting es efimero, un archivo se
+    // perderia en cada redesplegue.
+    @GetMapping("/config/contacto")
+    public ResponseEntity<?> verContacto() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("contacto", contactoService.mapa());
+        out.put("sitioWeb", hubConfigService.getSitioWeb());
+        return ResponseEntity.ok(out);
+    }
+
+    @PutMapping("/config/contacto")
+    public ResponseEntity<?> guardarContacto(@RequestBody Map<String, Object> body) {
+        Object datos = body.get("contacto");
+        HubContacto c = contactoService.guardar(datos instanceof Map ? castMapa(datos) : body);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("mensaje", "Medios de contacto guardados.");
+        out.put("contacto", c.comoMapa());
+        return ResponseEntity.ok(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMapa(Object o) {
+        return (Map<String, Object>) o;
+    }
+
+    // ─── PLANES DEL MODULO (REQ-HUB-PLANES-01) ───────────────
+    // Cada plan tiene su PROPIO precio; no todos los modulos ofrecen los tres
+    // (mensual/anual/permanente). Si el modulo no tiene planes, la Tienda
+    // sintetiza uno desde los campos legacy del modulo.
+    @GetMapping("/catalogo/modulos/{id}/planes")
+    public ResponseEntity<?> listarPlanes(@PathVariable Long id) {
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        }
+        return ResponseEntity.ok(planService.listarAdmin(m));
+    }
+
+    /** Crea o actualiza el plan de ese tipo (uno por tipo y modulo). */
+    @PostMapping("/catalogo/modulos/{id}/planes")
+    public ResponseEntity<?> guardarPlan(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        }
+        try {
+            return ResponseEntity.ok(planService.guardar(m, body));
+        } catch (IllegalArgumentException e) {
+            // Validacion: 400 con el motivo (el panel lo muestra tal cual).
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/catalogo/modulos/{id}/planes/{planId}")
+    public ResponseEntity<?> eliminarPlan(@PathVariable Long id, @PathVariable Long planId) {
+        return planService.eliminar(id, planId)
+                ? ResponseEntity.ok(Map.of("ok", true))
+                : ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Plan no encontrado"));
     }
 
     // ─── FOTOS DEL MODULO (max 10, REQ-HUB-FOTOS-01) ─────────

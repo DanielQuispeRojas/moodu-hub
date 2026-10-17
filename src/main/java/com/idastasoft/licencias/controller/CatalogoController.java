@@ -6,11 +6,16 @@ import com.idastasoft.licencias.model.VersionSistema;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
 import com.idastasoft.licencias.repository.ModuloFotoRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
+import com.idastasoft.licencias.service.ContactoService;
+import com.idastasoft.licencias.service.HubConfigService;
+import com.idastasoft.licencias.service.ModuloPlanService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,11 +30,19 @@ public class CatalogoController {
     private final ModuloCatalogoRepo moduloRepo;
     private final ModuloFotoRepo fotoRepo;
     private final VersionSistemaRepo versionRepo;
+    private final ModuloPlanService planService;
+    private final HubConfigService hubConfig;
+    private final ContactoService contactoService;
 
-    public CatalogoController(ModuloCatalogoRepo moduloRepo, ModuloFotoRepo fotoRepo, VersionSistemaRepo versionRepo) {
+    public CatalogoController(ModuloCatalogoRepo moduloRepo, ModuloFotoRepo fotoRepo,
+                               VersionSistemaRepo versionRepo, ModuloPlanService planService,
+                               HubConfigService hubConfig, ContactoService contactoService) {
         this.moduloRepo = moduloRepo;
         this.fotoRepo = fotoRepo;
         this.versionRepo = versionRepo;
+        this.planService = planService;
+        this.hubConfig = hubConfig;
+        this.contactoService = contactoService;
     }
 
     private ModuloCatalogo conFotos(ModuloCatalogo m) {
@@ -38,13 +51,42 @@ public class CatalogoController {
         return m;
     }
 
+    /**
+     * Modulo + fotos + planes, como mapas (la entidad no lleva planes: viven en
+     * otra tabla). Si el modulo no tiene planes propios, se sintetiza uno desde
+     * los campos legacy para que lo ya cargado siga funcionando.
+     */
+    private Map<String, Object> conPlanes(ModuloCatalogo m) {
+        conFotos(m);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", m.getId());
+        out.put("clave", m.getClave());
+        out.put("nombre", m.getNombre());
+        out.put("descripcion", m.getDescripcion());
+        out.put("imagen", m.getImagen());
+        out.put("iconoUrl", m.getIconoUrl());
+        out.put("fotoIds", m.getFotoIds());
+        out.put("desarrollador", m.getDesarrollador());
+        out.put("version", m.getVersion());
+        out.put("fechaPublicacion", m.getFechaPublicacion() != null ? m.getFechaPublicacion().toString() : null);
+        out.put("origen", m.getOrigen().name());
+        out.put("tipo", m.getTipo().name());
+        out.put("precio", m.getPrecio());
+        out.put("linkDescarga", m.getLinkDescarga());
+        out.put("linkRepositorio", m.getLinkRepositorio());
+        out.put("vigenciaDias", m.getVigenciaDias());
+        out.put("activo", m.isActivo());
+        out.put("planes", planService.planesPublicos(m.getId(), m));
+        return out;
+    }
+
     /** Lista de modulos activos del catalogo (oficiales y terceros). */
     @GetMapping("/modulos")
     public ResponseEntity<?> listarModulos() {
-        List<ModuloCatalogo> modulos = moduloRepo.findAll().stream()
-                .filter(ModuloCatalogo::isActivo)
-                .map(this::conFotos)
-                .toList();
+        List<Map<String, Object>> modulos = new ArrayList<>();
+        for (ModuloCatalogo m : moduloRepo.findAll()) {
+            if (m.isActivo()) modulos.add(conPlanes(m));
+        }
         return ResponseEntity.ok(modulos);
     }
 
@@ -55,7 +97,21 @@ public class CatalogoController {
         if (m == null || !m.isActivo()) {
             return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
         }
-        return ResponseEntity.ok(conFotos(m));
+        return ResponseEntity.ok(conPlanes(m));
+    }
+
+    /**
+     * Medios de contacto del soporte de MOODU (REQ-HUB-PLANES-01).
+     * Los muestra la Tienda en el modal "Mejorar Plan". Editables desde el
+     * panel admin del Hub (tabla hub_contacto), sin redesplegar.
+     */
+    @GetMapping("/contacto")
+    public ResponseEntity<?> contacto() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("contacto", contactoService.mapa());
+        out.put("sitioWeb", hubConfig.getSitioWeb());
+        return ResponseEntity.ok(out);
     }
 
     /** Fotos de un modulo (solo metadata; los bytes van por /fotos/{id}). */

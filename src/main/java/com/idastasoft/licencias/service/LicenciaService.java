@@ -3,13 +3,17 @@ package com.idastasoft.licencias.service;
 import com.idastasoft.licencias.model.Licencia;
 import com.idastasoft.licencias.model.LicenciaModulo;
 import com.idastasoft.licencias.model.Maquina;
+import com.idastasoft.licencias.model.ModuloCatalogo;
 import com.idastasoft.licencias.repository.LicenciaModuloRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
+import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,11 +25,43 @@ public class LicenciaService {
     private final LicenciaRepo licenciaRepo;
     private final MaquinaRepo maquinaRepo;
     private final LicenciaModuloRepo terminoRepo;
+    private final PlanComprapeService planComprapeService;
+    private final ModuloCatalogoRepo moduloRepo;
 
-    public LicenciaService(LicenciaRepo licenciaRepo, MaquinaRepo maquinaRepo, LicenciaModuloRepo terminoRepo) {
+    public LicenciaService(LicenciaRepo licenciaRepo, MaquinaRepo maquinaRepo, LicenciaModuloRepo terminoRepo,
+                           PlanComprapeService planComprapeService, ModuloCatalogoRepo moduloRepo) {
         this.licenciaRepo = licenciaRepo;
         this.maquinaRepo = maquinaRepo;
         this.terminoRepo = terminoRepo;
+        this.planComprapeService = planComprapeService;
+        this.moduloRepo = moduloRepo;
+    }
+
+    /**
+     * Estado del marketplace Comprape de una licencia (docs/comprape.md 4.2, R8/R9).
+     * SOLO LECTURA como consultarEstado(): no registra ni activa maquina alguna, para
+     * que MOODU lo pueda consultar seguido (el countdown de 15 dias se refresca sin
+     *VALIDAR y sin consumir cupo de maquinas).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> estadoComprape(String correo, String clave) {
+        Licencia l = licenciaRepo.findByCorreoAndClaveActivacion(correo, clave).orElse(null);
+        if (l == null) {
+            return Map.of("ok", false, "mensaje",
+                "Clave invalida o licencia no activada. Comuniquese con su proveedor o adquiera una en https://moodu.com");
+        }
+        if (!l.isActiva()) {
+            return Map.of("ok", false, "mensaje", "La licencia esta desactivada. Contacte a su proveedor.");
+        }
+        if (!estaVigente(l)) {
+            return Map.of("ok", false, "mensaje", "La licencia ha expirado. Renuevela para continuar.");
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("ok", true);
+        res.put("mensaje", "Plan Comprape consultado");
+        res.put("correo", l.getCorreo());
+        res.putAll(planComprapeService.estadoDe(l));
+        return res;
     }
 
     /** Calcula la fecha de expiracion de la licencia. */
@@ -64,6 +100,91 @@ public class LicenciaService {
         return LocalDateTime.now().isBefore(exp);
     }
 
+    /**
+     * Activa un modulo GRATUITO pedido desde la Tienda del desktop
+     * (REQ-HUB-ACTIVA-GRATIS-01).
+     *
+     * <p><b>El Hub es quien valida que sea gratis</b>: no se fia de lo que
+     * diga el cliente. Si el modulo no existe, esta inactivo o es de PAGA,
+     * devuelve el error y no toca la licencia.</p>
+     *
+     * <p>Un modulo gratuito se otorga <b>PERMANENTE</b> (decision del
+     * usuario 2026-10-16: "lo gratis es tuyo"). Si ya estaba, no hace
+     * nada y responde ok (idempotente).</p>
+     *
+     * <p>No registra ni consume maquina: no es una activacion de equipo.</p>
+     */
+    @Transactional
+    public Map<String, Object> activarModuloGratuito(String correo, String clave, String moduloClave) {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("ok", false);
+
+        if (moduloClave == null || moduloClave.isBlank()) {
+            error.put("mensaje", "Indica el modulo que quieres activar.");
+            return error;
+        }
+        Licencia l = licenciaRepo.findByCorreoAndClaveActivacion(correo, clave).orElse(null);
+        if (l == null) {
+            error.put("mensaje", "Clave invalida o licencia no activada. Comuniquese con su proveedor o adquiera una en https://moodu.com");
+            return error;
+        }
+        if (!l.isActiva()) {
+            error.put("mensaje", "La licencia esta desactivada. Contacte a su proveedor.");
+            return error;
+        }
+        if (!estaVigente(l)) {
+            error.put("mensaje", "La licencia ha expirado. Renuevela para continuar.");
+            return error;
+        }
+
+        String claveNorm = moduloClave.trim().toLowerCase();
+        ModuloCatalogo m = moduloRepo.findByClave(claveNorm);
+        if (m == null || !m.isActivo()) {
+            error.put("mensaje", "Ese modulo no existe en el catalogo de MOODU.");
+            return error;
+        }
+        if (m.getTipo() != ModuloCatalogo.TipoLicencia.GRATIS) {
+            // No lo Activamos de a poco: un modulo de paga se compra con soporte.
+            error.put("mensaje", "El modulo " + m.getNombre() + " es de pago; su activacion la realiza el soporte de MOODU.");
+            return error;
+        }
+        if (m.getPrecio() != null && m.getPrecio().compareTo(BigDecimal.ZERO) > 0) {
+            error.put("mensaje", "El modulo " + m.getNombre() + " tiene precio (" + m.getPrecio()
+                    + "); su activacion la realiza el soporte de MOODU.");
+            return error;
+        }
+
+        // Idempotente: si ya esta en la lista legacy y con termino, no duplica.
+        List<String> mods = l.getModulos() != null ? new ArrayList<>(l.getModulos()) : new ArrayList<>();
+        boolean nuevoLegacy = !mods.contains(claveNorm);
+        if (nuevoLegacy) {
+            mods.add(claveNorm);
+            l.setModulos(mods);
+            licenciaRepo.save(l);
+        }
+        LicenciaModulo t = terminoRepo.findByLicenciaIdAndModuloClave(l.getId(), claveNorm).orElse(null);
+        if (t == null) {
+            t = new LicenciaModulo();
+            t.setLicencia(l);
+            t.setModuloClave(claveNorm);
+            t.setPlan(LicenciaModulo.PlanModulo.PERMANENTE);
+            t.setPeriodos(1);
+            t.setFechaInicio(LocalDateTime.now());
+            terminoRepo.save(t);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("mensaje", nuevoLegacy
+                ? "Modulo " + m.getNombre() + " activado en tu licencia."
+                : "El modulo " + m.getNombre() + " ya estaba activado en tu licencia.");
+        out.put("modulo", claveNorm);
+        out.put("agregado", nuevoLegacy);
+        out.put("modulos", modulosHabilitados(l));
+        out.put("modulosDetalle", detallesModulos(l));
+        return out;
+    }
+
     /** Detalle por modulo para el modal "ver" (clave, plan, expiracion, vigente). */
     public List<Map<String, Object>> detallesModulos(Licencia l) {
         List<Map<String, Object>> out = new ArrayList<>();
@@ -76,6 +197,16 @@ public class LicenciaService {
             m.put("fechaInicio", t.getFechaInicio() != null ? t.getFechaInicio().toString() : null);
             m.put("expiracion", exp != null ? exp.toString() : "PERMANENTE");
             m.put("vigente", terminoVigente(t));
+            // Lo que la Tienda muestra al lado del boton "Mejorar Plan"
+            // (REQ-HUB-PLANES-01): cuanto le queda de licencia a ESTE modulo.
+            if (exp == null) {
+                m.put("diasRestantes", -1);      // -1 = permanente (no caduca)
+                m.put("mesesRestantes", -1);
+            } else {
+                long dias = ChronoUnit.DAYS.between(LocalDateTime.now(), exp);
+                m.put("diasRestantes", Math.max(0, dias));
+                m.put("mesesRestantes", Math.max(0, dias / 30));
+            }
             out.add(m);
         }
         return out;

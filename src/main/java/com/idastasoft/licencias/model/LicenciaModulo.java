@@ -47,6 +47,15 @@ public class LicenciaModulo {
     public void setLicencia(Licencia licencia) { this.licencia = licencia; }
     public String getModuloClave() { return moduloClave; }
     public void setModuloClave(String moduloClave) { this.moduloClave = moduloClave; }
+
+    /**
+     * Alias de lectura para el JSON: el resto del sistema (y el panel admin)
+     * habla de "clave", no de "moduloClave". Sin esto, el panel leia
+     * t.clave -&gt; undefined y las licencias aparecian SIN modulos marcados.
+     * Jackson lo serializa como "clave" (mismo patron que el alias
+     * noProforma de Proforma en el core).
+     */
+    public String getClave() { return moduloClave; }
     public PlanModulo getPlan() { return plan; }
     public void setPlan(PlanModulo plan) { this.plan = plan; }
     public int getPeriodos() { return periodos; }

@@ -55,6 +55,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Tests: el Hub no tenia suite. PlanComprapeService concentra las
+             reglas de cupo/ventana (20 items, 15 dias) y ya sufrio un
+             NullPointerException por unboxing en un ternario.
+             OJO: este proyecto es Spring Boot 3.4.6 (el core es 4.0.6), asi que
+             van los starters clasicos, NO los "-test" de Boot 4. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>

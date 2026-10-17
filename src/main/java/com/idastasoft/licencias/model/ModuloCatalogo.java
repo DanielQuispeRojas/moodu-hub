@@ -44,6 +44,14 @@ public class ModuloCatalogo {
     @Transient
     private java.util.List<Long> fotoIds;
 
+    /**
+     * Planes de pago del modulo (REQ-HUB-PLANES-01): cada plan su precio.
+     * Vive en {@code modulo_plan}; aqui solo viaja el resumen para la Tienda
+     * y el panel. Se rellena por el controller; la entidad no lo persiste.
+     */
+    @Transient
+    private java.util.List<java.util.Map<String, Object>> planes = new java.util.ArrayList<>();
+
     /** Desarrollador que publica (MOODU para oficiales, o un DESARROLLADOR). */
     @Column(nullable = false)
     private String desarrollador = "MOODU";
@@ -100,6 +108,8 @@ public class ModuloCatalogo {
     public void setIconoUrl(String iconoUrl) { this.iconoUrl = iconoUrl; }
     public java.util.List<Long> getFotoIds() { return fotoIds; }
     public void setFotoIds(java.util.List<Long> fotoIds) { this.fotoIds = fotoIds; }
+    public java.util.List<java.util.Map<String, Object>> getPlanes() { return planes; }
+    public void setPlanes(java.util.List<java.util.Map<String, Object>> planes) { this.planes = planes; }
     public String getDesarrollador() { return desarrollador; }
     public void setDesarrollador(String desarrollador) { this.desarrollador = desarrollador; }
     public String getVersion() { return version; }
