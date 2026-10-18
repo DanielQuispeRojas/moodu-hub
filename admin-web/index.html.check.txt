@@ -1,0 +1,3 @@
+TEMPLATE: compila OK (con el #app cerrado, como siempre)
+DIV: abren=310 cierran=309 delta=1 (1 = el #app sin cerrar, como estaba)
+MOJIBAKE: 0

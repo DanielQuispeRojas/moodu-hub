@@ -132,11 +132,17 @@
         <h6 class="mb-2">Licencias registradas</h6>
         <div class="table-responsive">
           <table class="table table-sm table-striped align-middle mb-0">
-            <thead><tr><th>Correo</th><th>Cliente</th><th>Clave</th><th>Modulos</th><th>Maq.</th><th>Vigencia</th><th>Activa</th><th></th></tr></thead>
+            <thead><tr><th>Correo</th><th>Cliente</th><th>Clave</th><th>Modo</th><th>Modulos</th><th>Maq.</th><th>Vigencia</th><th>Activa</th><th></th></tr></thead>
             <tbody>
               <tr v-for="l in licencias" :key="l.id">
                 <td>{{ l.correo }}</td>
                 <td>{{ l.nombre }} {{ l.apellido }}</td>
+                <td><code>{{ l.claveActivacion }}</code></td>
+                <td>
+                  <span class="badge" :class="claseTipo(resumenDe(l.correo) ? resumenDe(l.correo).tipoMoodu : 'GRATIS')">
+                    {{ resumenDe(l.correo) ? resumenDe(l.correo).tipoMoodu : '—' }}
+                  </span>
+                </td>
                 <td><code>{{ l.claveActivacion }}</code></td>
                 <td>
                   <span v-if="!modsDe(l).length" class="text-muted small">ninguno</span>
@@ -453,8 +459,174 @@
 
     <!-- ============ DISPOSITIVOS ============ -->
     <div v-if="tab==='disp'">
+      <!-- MODOS DE MOODU: que es cada licencia (gratis/plus/pro) y por que -->
+      <div class="card p-3 mb-3">
+        <h6 class="mb-2">Modos de MOODU</h6>
+        <div class="alert alert-info py-2 small mb-2">
+          El modo de MOODU <b>no se edita aqui</b>: se deduce de los modulos de cada licencia.
+          <b>GRATIS</b> = maquina unica y NODO (sin maquina central).
+          <b>PLUS</b> = + modo maquina central (agrega <code>moodu_plus</code>).
+          <b>PRO</b> = + todos los modulos oficiales y dispositivos ilimitados (agrega <code>moodu_pro</code>).
+          Para cambiarlo, edita los modulos de la licencia en la pestana <b>Licencias</b>.
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle mb-0">
+            <thead><tr><th>Licencia</th><th>Modo</th><th>Base</th><th>Pack extra</th><th>Total</th><th>Pack</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="r in resumenDisp" :key="r.correo">
+                <td>{{ r.correo }} <span v-if="!r.activa" class="badge bg-danger">inactiva</span></td>
+                <td><span class="badge" :class="claseTipo(r.tipoMoodu)">{{ r.tipoMoodu }}</span></td>
+                <td>{{ r.base }}</td>
+                <td>
+                  <span v-if="r.ilimitados" class="text-muted">—</span>
+                  <span v-else>+{{ r.extra }}</span>
+                </td>
+                <td>
+                  <b>{{ totalDe(r) }}</b>
+                </td>
+                <td>
+                  <span v-if="!r.codigoPack" class="text-muted small">ninguno</span>
+                  <span v-else>
+                    <code>{{ r.codigoPack }}</code>
+                    <span class="badge bg-secondary ms-1">{{ r.planPack }}</span>
+                    <span v-if="r.vigenciaPack" class="text-muted small ms-1">vence {{ r.vigenciaPack.slice(0,10) }}</span>
+                    <span v-else-if="r.planPack === 'PERMANENTE'" class="text-muted small ms-1">permanente</span>
+                    <span v-if="r.codigoPack && !r.packVigente" class="badge bg-warning ms-1">vencido</span>
+                  </span>
+                </td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-primary me-1"
+                    :disabled="r.ilimitados"
+                    :title="r.ilimitados ? 'MOODU Pro ya tiene dispositivos ilimitados' : 'Asignar o reemplazar el pack'"
+                    @click="abrirAsignarPack(r)">Asignar pack</button>
+                  <button v-if="r.codigoPack" class="btn btn-sm btn-outline-danger" @click="quitarPack(r.correo)">Quitar</button>
+                </td>
+              </tr>
+              <tr v-if="!resumenDisp.length"><td colspan="7" class="text-muted small">Todavia no hay licencias.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CATALOGO DE PACKS: aqui se definen los precios -->
+      <div class="card p-3 mb-3">
+        <h6 class="mb-2">Catalogo de packs de dispositivos</h6>
+        <div class="alert alert-secondary py-2 small mb-2">
+          Un pack <b>sin precio no se ofrece</b>: la Tienda lo oculta y "Adquirir" avisa que no hay tarifa.
+          Ponle al menos un precio (mensual, permanente o ambos) para que aparezca en la Tienda del cliente.
+        </div>
+        <div class="table-responsive mb-2">
+          <table class="table table-sm table-striped align-middle mb-0">
+            <thead><tr><th>Codigo</th><th>Dispositivos</th><th>Mensual</th><th>Permanente</th><th>Se ofrece</th><th>Activo</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="p in packs" :key="p.codigo">
+                <td><code>{{ p.codigo }}</code></td>
+                <td>+{{ p.dispositivos }}</td>
+                <td>{{ p.precioMensual != null ? p.precioMensual : '—' }}</td>
+                <td>{{ p.precioPermanente != null ? p.precioPermanente : '—' }}</td>
+                <td>
+                  <span v-if="planesDePack(p).length" class="badge bg-success">si</span>
+                  <span v-else class="badge bg-secondary">sin precio</span>
+                </td>
+                <td>{{ p.activo ? 'Si' : 'No' }}</td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-info me-1" @click="editarPack(p)">Editar</button>
+                  <button class="btn btn-sm btn-outline-danger" @click="eliminarPack(p)">Quitar</button>
+                </td>
+              </tr>
+              <tr v-if="!packs.length"><td colspan="7" class="text-muted small">Sin packs. Crea el primero.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-success btn-sm" @click="editarPack(null)">+ Nuevo pack</button>
+      </div>
+
+      <!-- MODAL EDITAR PACK -->
+      <div v-if="packEditando" class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.5)">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">{{ packs.find(p=>p.codigo===packEditando.codigo) ? 'Editar pack' : 'Nuevo pack' }}</h6></div>
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-4">
+                  <label class="form-label small mb-0">Codigo</label>
+                  <input v-model="packEditando.codigo" class="form-control form-control-sm" placeholder="D5" />
+                </div>
+                <div class="col-8">
+                  <label class="form-label small mb-0">Nombre</label>
+                  <input v-model="packEditando.nombre" class="form-control form-control-sm" placeholder="5 dispositivos extra" />
+                </div>
+                <div class="col-4">
+                  <label class="form-label small mb-0">Dispositivos</label>
+                  <input v-model.number="packEditando.dispositivos" type="number" min="1" class="form-control form-control-sm" />
+                </div>
+                <div class="col-4">
+                  <label class="form-label small mb-0">Precio mensual</label>
+                  <input v-model.number="packEditando.precioMensual" type="number" step="0.01" class="form-control form-control-sm" placeholder="vacio = no se ofrece" />
+                </div>
+                <div class="col-4">
+                  <label class="form-label small mb-0">Precio permanente</label>
+                  <input v-model.number="packEditando.precioPermanente" type="number" step="0.01" class="form-control form-control-sm" placeholder="vacio = no se ofrece" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-0">Descripcion</label>
+                  <input v-model="packEditando.descripcion" class="form-control form-control-sm" placeholder="Para el cliente (opcional)" />
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="pack-activo" v-model="packEditando.activo" />
+                    <label class="form-check-label small" for="pack-activo">Activo (aparece en la Tienda)</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-sm btn-outline-secondary" @click="packEditando=null">Cancelar</button>
+              <button class="btn btn-sm btn-success" @click="guardarPack">Guardar pack</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL ASIGNAR PACK -->
+      <div v-if="packAsignando" class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.5)">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">Ampliar cupo de {{ packAsignando.correo }}</h6></div>
+            <div class="modal-body">
+              <div class="alert alert-info py-2 small">
+                El pago lo recibes tu (hoy es presencial). Al guardar, el pack queda activo en la licencia.
+              </div>
+              <div class="mb-2">
+                <label class="form-label small mb-0">Pack</label>
+                <select v-model="packAsignando.codigo" class="form-select form-select-sm">
+                  <option v-for="p in packs.filter(x=>planesDePack(x).length)" :key="p.codigo" :value="p.codigo">
+                    {{ p.codigo }} · +{{ p.dispositivos }} dispositivos
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label small mb-0">Forma de pago</label>
+                <select v-model="packAsignando.plan" class="form-select form-select-sm">
+                  <option v-for="pl in planesDelPackElegido()" :key="pl" :value="pl">
+                    {{ pl === 'MENSUAL' ? 'Mensual (se renueva cada mes)' : 'Permanente (no caduca)' }}
+                  </option>
+                </select>
+              </div>
+              <div v-if="!packs.filter(x=>planesDePack(x).length).length" class="alert alert-warning py-2 small mb-0 mt-2">
+                No hay ningun pack con precio. Definelos en "Catalogo de packs" primero.
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-sm btn-outline-secondary" @click="packAsignando=null">Cancelar</button>
+              <button class="btn btn-sm btn-primary" :disabled="!packAsignando.codigo" @click="asignarPack">Asignar pack</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card p-3">
-        <h6 class="mb-2">Dispositivos por licencia</h6>
+        <h6 class="mb-2">Maquinas registradas por licencia</h6>
         <select class="form-select form-select-sm mb-2" v-model.number="licSelId" @change="verDisp(licencias.find(l => l.id === licSelId))">
           <option :value="null" disabled>Selecciona una licencia...</option>
           <option v-for="l in licencias" :key="l.id" :value="l.id">{{ l.correo }} ({{ l.maquinasPermitidas }} maq.)</option>
@@ -1186,6 +1358,10 @@ createApp({
     const licencias = ref([])
     const paquetes = ref([])
     const maquinas = ref([])
+    const packs = ref([])
+    const resumenDisp = ref([])
+    const packEditando = ref(null)
+    const packAsignando = ref(null)
     const licSeleccionada = ref(null)
     const licSelId = ref(null)
     const licEditando = ref(null)
@@ -1511,14 +1687,18 @@ createApp({
 
     async function cargar() {
       try {
-        const [l, p, c] = await Promise.all([
+        const [l, p, c, pk, rd] = await Promise.all([
           fetch(API + '/api/admin/gestion/licencias', { headers: authHeaders() }).then(r=>r.json()),
           fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json()),
-          fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json())
+          fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json()),
+          fetch(API + '/api/admin/gestion/dispositivos/packs', { headers: authHeaders() }).then(r=>r.json()),
+          fetch(API + '/api/admin/gestion/dispositivos/resumen', { headers: authHeaders() }).then(r=>r.json())
         ])
         licencias.value = Array.isArray(l) ? l : []
         paquetes.value = Array.isArray(p) ? p : []
         catalogo.value = Array.isArray(c) ? c : []
+        packs.value = (pk && Array.isArray(pk.packs)) ? pk.packs : []
+        resumenDisp.value = (rd && Array.isArray(rd.licencias)) ? rd.licencias : []
         if (!Array.isArray(l)) {
           error.value = 'Sesion invalida o expirada: vuelve a iniciar sesion.'
           token.value = ''
@@ -2084,6 +2264,95 @@ createApp({
     }
 
     // ─── DISPOSITIVOS ────────────────────────────
+    // El tipo de MOODU (GRATIS/PLUS/PRO) se deduce de los modulos de la licencia,
+    // asi que NO se edita aqui: se muestra y se cambia agregando moodu_plus / moodu_pro.
+    function resumenDe(correo) {
+      return resumenDisp.value.find(r => r.correo === correo) || null
+    }
+    function claseTipo(t) {
+      return t === 'PRO' ? 'bg-primary' : (t === 'PLUS' ? 'bg-info text-dark' : 'bg-secondary')
+    }
+    function totalDe(r) {
+      return r && r.ilimitados ? 'Ilimitado' : (r ? r.total : 0)
+    }
+    function planesDePack(p) {
+      const out = []
+      if (p.precioMensual != null) out.push('MENSUAL')
+      if (p.precioPermanente != null) out.push('PERMANENTE')
+      return out
+    }
+    function precioPack(p, plan) {
+      return plan === 'MENSUAL' ? p.precioMensual : p.precioPermanente
+    }
+    function defaultPack() {
+      return { codigo:'', nombre:'', dispositivos:5, precioMensual:null, precioPermanente:null,
+        activo:true, descripcion:'' }
+    }
+    function editarPack(p) {
+      packEditando.value = p
+        ? { ...p }
+        : defaultPack()
+    }
+    async function guardarPack() {
+      const pk = packEditando.value
+      if (!pk || !pk.codigo) { error.value = 'El pack necesita un codigo.'; return }
+      const r = await fetch(API + '/api/admin/gestion/dispositivos/packs', {
+        method:'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          codigo: pk.codigo, nombre: pk.nombre, dispositivos: Number(pk.dispositivos) || 0,
+          precioMensual: pk.precioMensual === '' || pk.precioMensual == null ? null : Number(pk.precioMensual),
+          precioPermanente: pk.precioPermanente === '' || pk.precioPermanente == null ? null : Number(pk.precioPermanente),
+          activo: pk.activo !== false, descripcion: pk.descripcion
+        }) })
+      const d = await r.json()
+      error.value = d.ok ? '' : (d.mensaje || 'No se pudo guardar el pack')
+      if (d.ok) { packEditando.value = null; cargar() }
+    }
+    async function eliminarPack(p) {
+      if (!confirm(`Eliminar el pack "${p.codigo}"?`)) return
+      const r = await fetch(API + `/api/admin/gestion/dispositivos/packs/${p.codigo}`,
+        { method:'DELETE', headers: authHeaders() })
+      const d = await r.json()
+      error.value = d.ok ? '' : (d.mensaje || 'No se pudo eliminar el pack')
+      cargar()
+    }
+    function abrirAsignarPack(r) {
+      // Solo los packs con precio: uno sin precio no se puede "activar" (la
+      // compra publica tambien lo rechaza).
+      const conPrecio = packs.value.filter(p => planesDePack(p).length)
+      packAsignando.value = {
+        correo: r.correo,
+        codigo: conPrecio.length ? conPrecio[0].codigo : '',
+        plan: conPrecio.length && conPrecio[0].precioPermanente != null ? 'PERMANENTE' : 'MENSUAL',
+        planes: conPrecio.length ? conPrecio[0].precioPermanente != null ? ['PERMANENTE','MENSUAL'] : ['MENSUAL'] : []
+      }
+    }
+    function planesDelPackElegido() {
+      const p = packs.value.find(x => x.codigo === packAsignando.value.codigo)
+      if (!p) return []
+      const out = []
+      if (p.precioPermanente != null) out.push('PERMANENTE')
+      if (p.precioMensual != null) out.push('MENSUAL')
+      return out
+    }
+    async function asignarPack() {
+      const a = packAsignando.value
+      const r = await fetch(API + '/api/admin/gestion/dispositivos/licencias/asignar-pack', {
+        method:'POST', headers: authHeaders(),
+        body: JSON.stringify({ correo:a.correo, codigo:a.codigo, plan:a.plan }) })
+      const d = await r.json()
+      error.value = d.ok ? '' : (d.mensaje || 'No se pudo asignar el pack')
+      if (d.ok) packAsignando.value = null
+      cargar()
+    }
+    async function quitarPack(correo) {
+      if (!confirm(`Quitar el pack de ${correo}? Su cupo vuelve al base.`)) return
+      const r = await fetch(API + '/api/admin/gestion/dispositivos/licencias/quitar-pack', {
+        method:'POST', headers: authHeaders(), body: JSON.stringify({ correo }) })
+      const d = await r.json()
+      error.value = d.ok ? '' : (d.mensaje || 'No se pudo quitar el pack')
+      cargar()
+    }
     async function verDisp(l) {
       if (!l) { maquinas.value = []; licSeleccionada.value = null; return }
       licSeleccionada.value = l

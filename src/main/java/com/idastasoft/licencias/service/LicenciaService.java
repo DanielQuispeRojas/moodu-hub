@@ -584,6 +584,23 @@ public class LicenciaService {
         return estadoDispositivos(correo, clave);
     }
 
+    /** Todas las licencias (panel admin: columna de tipo y tarjeta de cupo). */
+    public List<Licencia> todasLasLicencias() {
+        return licenciaRepo.findAll();
+    }
+
+    /**
+     * Asigna el pack por CORREO (lo usa el panel admin, que no conoce la clave
+     * de activacion). Delega en {@link #comprarPackDispositivos} con la clave
+     * de la propia licencia: una sola implementacion de la regla, sin duplicar
+     * validaciones.
+     */
+    public Map<String, Object> asignarPackPorCorreo(String correo, String codigo, String plan) {
+        Licencia l = licenciaRepo.findByCorreo(correo).orElse(null);
+        if (l == null) return Map.of("ok", false, "mensaje", "Licencia no encontrada: " + correo);
+        return comprarPackDispositivos(l.getCorreo(), l.getClaveActivacion(), codigo, plan);
+    }
+
     /** Desactiva el pack (el cupo vuelve al base). Devuelve true si habia pack. */
     @Transactional
     public boolean quitarPackDispositivos(String correo) {

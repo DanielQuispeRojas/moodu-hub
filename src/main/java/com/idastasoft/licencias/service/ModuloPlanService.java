@@ -2,6 +2,7 @@ package com.idastasoft.licencias.service;
 
 import com.idastasoft.licencias.model.ModuloCatalogo;
 import com.idastasoft.licencias.model.ModuloPlan;
+import com.idastasoft.licencias.model.TipoMoodu;
 import com.idastasoft.licencias.repository.ModuloPlanRepo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,11 +120,34 @@ public class ModuloPlanService {
     }
 
     /**
+     * Un modulo que es un TIER de MOODU ({@code moodu_plus} / {@code moodu_pro})
+     * solo admite las periodicidades de su tipo: PLUS es permanente y PRO es
+     * mensual o anual (nunca permanente, §11.91). Un modulo normal no se
+     * restringe.
+     *
+     * @throws IllegalArgumentException con el motivo (lo ve el panel)
+     */
+    private void exigirPeriodicidadDelTier(ModuloCatalogo modulo, ModuloPlan.TipoPlan tipo) {
+        TipoMoodu tier = modulo == null ? null : TipoMoodu.deClaveCatalogo(modulo.getClave());
+        if (tier == null) return;
+        if (!tier.admite(tipo.name())) {
+            throw new IllegalArgumentException(
+                "MOODU " + tier.name() + " solo admite "
+                + String.join(" o ", tier.periodicidadesPermitidas())
+                + " (no " + tipo.name() + ").");
+        }
+    }
+
+    /**
      * Crea o actualiza un plan. No deja dos planes del mismo tipo en un
      * modulo: si ya existe ese tipo se edita el existente (el admin no
      * necesita saber si existia).
+     *
+     * <p>{@code noRollbackFor}: un rechazo de validacion no es un fallo que
+     * deba deshacer la transaccion (§11.442). Sin esto el panel recibia un 500
+     * en vez del 400 con el motivo.</p>
      */
-    @Transactional
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public Map<String, Object> guardar(ModuloCatalogo modulo, Map<String, Object> body) {
         ModuloPlan.TipoPlan tipo = parseTipo(body.get("tipo"));
         exigirPeriodicidadDelTier(modulo, tipo);

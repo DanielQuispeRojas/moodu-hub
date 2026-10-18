@@ -78,6 +78,25 @@ public enum TipoMoodu {
         return plus ? PLUS : GRATIS;
     }
 
+    /**
+     * Tipo al que pertenece una CLAVE DE CATALOGO ({@code moodu_plus} /
+     * {@code moodu_pro}), o null si el modulo no es un tier del sistema.
+     * Lo usa el Hub para validar la periodicidad del plan al guardarlo: PLUS
+     * solo PERMANENTE, PRO solo MENSUAL o ANUAL.
+     */
+    public static TipoMoodu deClaveCatalogo(String clave) {
+        if (clave == null || clave.isBlank()) return null;
+        String c = clave.trim().toLowerCase(Locale.ROOT);
+        if (c.equals(CLAVE_PRO)) return PRO;
+        if (c.equals(CLAVE_PLUS)) return PLUS;
+        return null;
+    }
+
+    /** true si la clave es un tier de MOODU (PLUS/PRO) y no un modulo normal. */
+    public static boolean esClaveTier(String clave) {
+        return deClaveCatalogo(clave) != null;
+    }
+
     /** Clave de catalogo que hay que agregar a la licencia para obtener este tipo. */
     public String claveCatalogo() {
         return switch (this) {

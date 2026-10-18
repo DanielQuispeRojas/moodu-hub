@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -99,6 +101,54 @@ public class AdminDispositivosController {
         res.put("ok", true);
         res.put("mensaje", habia ? "Pack quitado: el cupo vuelve al base" : "Esa licencia no tenia pack");
         return ResponseEntity.ok(res);
+    }
+
+    /**
+     * Resumen de TODAS las licencias de una vez: tipo de MOODU, cupo base +
+     * extra y el pack vigente. El panel lo usa para la columna "Tipo" y para
+     * la tarjeta de cupo sin llamar endpoint por licencia.
+     */
+    @GetMapping("/resumen")
+    public ResponseEntity<?> resumen() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Licencia l : licenciaService.todasLasLicencias()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            var tipo = licenciaService.tipoDe(l);
+            var pack = packService.packDe(l);
+            m.put("id", l.getId());
+            m.put("correo", l.getCorreo());
+            m.put("activa", l.isActiva());
+            m.put("tipoMoodu", tipo.name());
+            m.put("capacidades", tipo.capacidades());
+            m.put("ilimitados", tipo.maquinasIlimitadas());
+            m.put("base", l.getMaquinasPermitidas());
+            m.put("extra", packService.dispositivosExtraDe(l));
+            m.put("total", licenciaService.maquinasEfectivas(l));
+            m.put("codigoPack", pack == null ? null : pack.getCodigo());
+            m.put("planPack", pack == null ? null : pack.getPlan());
+            m.put("packVigente", pack != null && pack.vigente());
+            m.put("vigenciaPack", pack == null || pack.getVigenciaHasta() == null
+                ? null : pack.getVigenciaHasta().toString());
+            out.add(m);
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("ok", true);
+        res.put("licencias", out);
+        return ResponseEntity.ok(res);
+    }
+
+    /**
+     * Asigna (o reemplaza) el pack de una licencia. El pago lo hace el
+     * administrador fuera del Hub (§11.90: hoy es presencial); aca queda
+     * registrado, que es lo mismo que hace la compra publica pero por correo
+     * (el admin no conoce la clave de activacion).
+     */
+    @PostMapping("/licencias/asignar-pack")
+    public ResponseEntity<?> asignarPack(@RequestBody Map<String, Object> body) {
+        String correo = (String) body.getOrDefault("correo", "");
+        String codigo = (String) body.getOrDefault("codigo", "");
+        String plan = (String) body.getOrDefault("plan", "PERMANENTE");
+        return ResponseEntity.ok(licenciaService.asignarPackPorCorreo(correo, codigo, plan));
     }
 
     /** Estado del cupo de una licencia (lo usa el modal Ver de la licencia). */
