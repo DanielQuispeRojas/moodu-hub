@@ -916,6 +916,7 @@
           </div>
         </div>
       </div>
+    </div>
 
     <!-- ============ VALORACIONES ============ -->
     <div v-if="tab==='val'">
@@ -990,6 +991,13 @@
             <label class="form-label small mb-0" for="tem-desc">Descripcion</label>
             <input id="tem-desc" v-model="nuevoT.descripcion" class="form-control form-control-sm" placeholder="Para quien es este theme" />
           </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="tem-fabrica" v-model="nuevoT.esFabrica" />
+              <label class="form-check-label small" for="tem-fabrica">Es de fabrica (no lo ofrezcas en la Tienda)</label>
+            </div>
+            <div class="form-hint">Los themes que ya trae MOODU de serie NO se publican en la Tienda (el desktop los trae instalados). Marca aqui solo los tuyos que no quieras ofrecer.</div>
+          </div>
         </div>
         <div class="section-title">Archivo del theme (.json)</div>
         <div class="row g-2">
@@ -1011,11 +1019,11 @@
 
       <div class="card p-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="mb-0">Themes publicados</h6>
+          <h6 class="mb-0">Themes del catalogo</h6>
           <button class="btn btn-sm btn-outline-secondary" @click="cargarTemas">Recargar</button>
         </div>
         <table class="table table-sm table-striped align-middle mb-0">
-          <thead><tr><th>Muestras</th><th>Nombre</th><th>Grupo</th><th>Base</th><th>Version</th><th>Tamano</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Muestras</th><th>Nombre</th><th>Grupo</th><th>Base</th><th>Version</th><th>Tamano</th><th>En Tienda</th><th></th></tr></thead>
           <tbody>
             <tr v-for="t in temas" :key="t.id">
               <td>
@@ -1030,7 +1038,8 @@
               <td>{{ t.version }}</td>
               <td class="small">{{ t.tamano }} B</td>
               <td>
-                <span v-if="t.activo" class="badge text-bg-success">Activo</span>
+                <span v-if="t.esFabrica" class="badge text-bg-dark">Fabrica</span>
+                <span v-else-if="t.activo" class="badge text-bg-success">Publicado</span>
                 <span v-else class="badge text-bg-secondary">Inactivo</span>
                 <span v-if="!t.archivoOk" class="badge text-bg-danger ms-1">Archivo invalido</span>
               </td>
@@ -1042,7 +1051,7 @@
             </tr>
           </tbody>
         </table>
-        <div v-if="temas.length === 0" class="text-muted small py-2">Sin themes publicados todavia.</div>
+        <div v-if="temas.length === 0" class="text-muted small py-2">Sin themes todavia. Sube uno o crea el archivo desde el Hub.</div>
       </div>
 
       <div v-if="temaEditando" class="modal d-block" style="background:rgba(0,0,0,.4)">
@@ -1076,6 +1085,13 @@
                     <input class="form-check-input" type="checkbox" id="ted-activo" v-model="temaEditando.activo" />
                     <label class="form-check-label small" for="ted-activo">Activo en la Tienda</label>
                   </div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="ted-fabrica" v-model="temaEditando.esFabrica" />
+                    <label class="form-check-label small" for="ted-fabrica">Es de fabrica (no lo ofrezcas en la Tienda)</label>
+                  </div>
+                  <div class="form-hint">Un theme de fabrica queda solo en este panel: no sale en la Tienda ni se puede descargar por su clave.</div>
                 </div>
                 <div class="col-12">
                   <label class="form-label small mb-0" for="ted-desc">Descripcion</label>
@@ -1398,7 +1414,7 @@ createApp({
         origen:'OFICIAL', tipo:'GRATIS', precio:0, descripcion:'', linkDescarga:'', linkRepositorio:'' }
     }
     function defaultTema() {
-      return { nombre:'', clave:'', grupo:'claros', version:'1.0.0', descripcion:'', contenido:'', nombreArchivo:'' }
+      return { nombre:'', clave:'', grupo:'claros', version:'1.0.0', descripcion:'', contenido:'', nombreArchivo:'', esFabrica:false }
     }
     function reset(objeto, fabrica) {
       Object.assign(objeto, fabrica())
@@ -1768,14 +1784,14 @@ createApp({
       cargarTemas()
     }
     function editarTema(t) {
-      temaEditando.value = { ...t, activo: t.activo !== false, contenido: '' }
+      temaEditando.value = { ...t, activo: t.activo !== false, esFabrica: t.esFabrica === true, contenido: '' }
       temaMsg.value = ''
     }
     async function guardarTema() {
       const t = temaEditando.value
       const body = {
         nombre: t.nombre, grupo: t.grupo, version: t.version,
-        descripcion: t.descripcion, activo: !!t.activo
+        descripcion: t.descripcion, activo: !!t.activo, esFabrica: !!t.esFabrica
       }
       if (t.contenido) body.contenido = t.contenido
       const r = await fetch(API + `/api/admin/gestion/catalogo/temas/${t.id}`, {

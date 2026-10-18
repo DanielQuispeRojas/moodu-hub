@@ -56,6 +56,16 @@ public class TemaCatalogo {
     @Column(length = 100)
     private String creadoPor;
 
+    /**
+     * Tema de FABRICA (los presets que trae MOODU de serie): NO se ofrecen en la
+     * Tienda, solo se ven en el panel admin. Wrapper Boolean a proposito: las filas
+     * viejas tienen NULL y deben leerse como "no es de fabrica" (= visible).
+     * La siembra de fabrica lo marca, y hace un backfill idempotente de las que ya
+     * estaban (por creadoPor = "sistema") para no pedir migracion manual.
+     */
+    @Column(name = "es_fabrica")
+    private Boolean esFabrica;
+
     @Column(nullable = false)
     private LocalDateTime fechaCreacion = LocalDateTime.now();
 
@@ -82,6 +92,10 @@ public class TemaCatalogo {
     public void setActivo(boolean activo) { this.activo = activo; }
     public String getCreadoPor() { return creadoPor; }
     public void setCreadoPor(String creadoPor) { this.creadoPor = creadoPor; }
+    public Boolean getEsFabrica() { return esFabrica; }
+    public void setEsFabrica(Boolean esFabrica) { this.esFabrica = esFabrica; }
+    /** null (fila vieja) = false = se ofrece en la Tienda. */
+    public boolean esDeFabrica() { return Boolean.TRUE.equals(esFabrica); }
     public LocalDateTime getFechaCreacion() { return fechaCreacion; }
     public void setFechaCreacion(LocalDateTime fechaCreacion) { this.fechaCreacion = fechaCreacion; }
     public LocalDateTime getFechaModificacion() { return fechaModificacion; }

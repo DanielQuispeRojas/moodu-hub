@@ -277,10 +277,21 @@ public class TemaCatalogoService {
      * validar()+crear(): la semilla no puede publicar un theme invalido.
      */
     public int sembrarFabrica() {
-        boolean yaSembrado = repo.findAll().stream()
+        List<TemaCatalogo> todas = repo.findAllByOrderByNombreAsc();
+        boolean yaSembrado = todas.stream()
                 .anyMatch(t -> t.getCreadoPor() != null && t.getCreadoPor().equalsIgnoreCase("sistema"));
         if (yaSembrado) {
-            return 0;
+            // backfill idempotente: los presets ya sembrados quedan marcados como de
+            // fabrica (asi salen de la Tienda) sin pedir migracion manual.
+            int marcados = 0;
+            for (TemaCatalogo t : todas) {
+                if ("sistema".equalsIgnoreCase(t.getCreadoPor()) && !t.esDeFabrica()) {
+                    t.setEsFabrica(Boolean.TRUE);
+                    repo.save(t);
+                    marcados++;
+                }
+            }
+            return marcados;
         }
         int n = 0;
         for (String[] p : FABRICA) {
@@ -292,6 +303,7 @@ public class TemaCatalogoService {
                 body.put("version", "1.0.0");
                 body.put("descripcion", "Preset de fabrica de MOODU (tambien disponible sin conexion).");
                 body.put("activo", true);
+                body.put("esFabrica", true);
                 body.put("contenido", fabricaJson(p));
                 if (Boolean.TRUE.equals(crear(body, "sistema").get("ok"))) {
                     n++;
@@ -314,16 +326,23 @@ public class TemaCatalogoService {
         return sb.append("}}").toString();
     }
 
-    /** Temas activos para la Tienda del desktop (sin el archivo: pesa). */
+    /**
+     * Temas activos para la Tienda del desktop (sin el archivo: pesa).
+     * Los de FABRICA (los presets que trae MOODU de serie) NO se ofrecen: el desktop
+     * ya los trae incorporados y en la Tienda solo van los que sube el admin.
+     * Filtro en Java y no en la query: una columna Boolean nullable con NULL (filas
+     * viejas) no cumple "= false" en Postgres y las ocultaria de la Tienda sin querer.
+     */
     public List<Map<String, Object>> listarPublicos() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (TemaCatalogo t : repo.findByActivoTrueOrderByNombreAsc()) {
+            if (t.esDeFabrica()) continue;
             out.add(ficha(t, false));
         }
         return out;
     }
 
-    /** Listado del panel admin (incluye inactivos y si hay archivo valido). */
+    /** Listado del panel admin (incluye inactivos, de fabrica y si hay archivo valido). */
     public List<Map<String, Object>> listarTodos() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (TemaCatalogo t : repo.findAllByOrderByNombreAsc()) {
@@ -349,6 +368,7 @@ public class TemaCatalogoService {
             m.put("creadoPor", t.getCreadoPor());
             m.put("fechaModificacion", t.getFechaModificacion());
             m.put("archivoOk", v.ok());
+            m.put("esFabrica", t.esDeFabrica());
             m.put("tamano", t.getContenido() != null ? t.getContenido().length() : 0);
         }
         return m;
@@ -356,8 +376,8 @@ public class TemaCatalogoService {
 
     /** Ficha publica de un tema, con el archivo (el desktop lo valida al aplicar). */
     public Map<String, Object> detalle(String clave) {
-        TemaCatalogo t = repo.findByClaveIgnoreCase(clave.trim()).orElse(null);
-        if (t == null || !t.isActivo()) return null;
+        TemaCatalogo t = entidadPublica(clave);
+        if (t == null) return null;
         Map<String, Object> m = ficha(t, false);
         m.put("contenido", t.getContenido());
         return m;
@@ -365,6 +385,17 @@ public class TemaCatalogoService {
 
     public TemaCatalogo entidad(String clave) {
         return repo.findByClaveIgnoreCase(clave.trim()).orElse(null);
+    }
+
+    /**
+     * Tema tal como lo ve la Tienda: debe existir, estar activo y NO ser de fabrica.
+     * Unica puerta para el detalle y la descarga (asi no se sirve el archivo de un
+     * preset de fabrica aunque se conozca su clave).
+     */
+    public TemaCatalogo entidadPublica(String clave) {
+        TemaCatalogo t = entidad(clave);
+        if (t == null || !t.isActivo() || t.esDeFabrica() || t.getContenido() == null) return null;
+        return t;
     }
 
     // ─── Escritura (admin) ────────────────────────────────────────
@@ -415,6 +446,7 @@ public class TemaCatalogoService {
         t.setBase(v.base());
         t.setContenido(v.contenido());
         t.setActivo(body.containsKey("activo") ? Boolean.parseBoolean(str(body, "activo")) : true);
+        t.setEsFabrica(body.containsKey("esFabrica") && Boolean.parseBoolean(str(body, "esFabrica")));
         t.setCreadoPor(usuario);
         TemaCatalogo g = repo.save(t);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -436,6 +468,9 @@ public class TemaCatalogoService {
         if (body.containsKey("version")) t.setVersion(versionValida(str(body, "version")));
         if (body.containsKey("activo")) {
             t.setActivo(Boolean.parseBoolean(str(body, "activo")));
+        }
+        if (body.containsKey("esFabrica")) {
+            t.setEsFabrica(Boolean.parseBoolean(str(body, "esFabrica")));
         }
         String contenido = str(body, "contenido");
         if (contenido != null && !contenido.isBlank()) {

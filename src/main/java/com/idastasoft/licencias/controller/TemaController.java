@@ -53,8 +53,9 @@ public class TemaController {
     /** Archivo .json del tema como descarga (para compartir o guardar). */
     @GetMapping("/{clave}/json")
     public ResponseEntity<?> descargar(@PathVariable String clave) {
-        TemaCatalogo t = service.entidad(clave);
-        if (t == null || !t.isActivo() || t.getContenido() == null) {
+        // entidadPublica: un preset de fabrica no se descarga aunque se conozca su clave.
+        TemaCatalogo t = service.entidadPublica(clave);
+        if (t == null) {
             return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Tema no encontrado"));
         }
         byte[] bytes = t.getContenido().getBytes(StandardCharsets.UTF_8);
