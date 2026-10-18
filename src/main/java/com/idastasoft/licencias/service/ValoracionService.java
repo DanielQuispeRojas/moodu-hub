@@ -98,15 +98,34 @@ public class ValoracionService {
         repo.deleteById(id);
     }
 
+    /**
+     * Solo el promedio y el total (sin la lista de resenas), para las tarjetas
+     * del catalogo: la Tienda muestra la reputacion de cada modulo sin abrirlo
+     * (REQ-HUB-OPINIONES-01). Solo cuenta las visibles.
+     */
+    public Map<String, Object> resumen(String destino) {
+        String dest = (destino == null || destino.isBlank()) ? DESTINO_MOODU : destino.trim().toLowerCase();
+        List<Valoracion> items = repo.findByDestinoAndVisibleTrueOrderByFechaModificacionDesc(dest);
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("destino", dest);
+        r.put("promedio", promedio(items));
+        r.put("total", items.size());
+        return r;
+    }
+
     /** Promedio redondeado a 1 decimal + total. Solo visibles. */
     private Map<String, Object> respuesta(String destino, List<Valoracion> items) {
-        double promedio = items.isEmpty() ? 0 : Math.round(items.stream().mapToInt(Valoracion::getPuntaje).average().orElse(0) * 10.0) / 10.0;
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("destino", destino);
-        r.put("promedio", promedio);
+        r.put("promedio", promedio(items));
         r.put("total", items.size());
         r.put("items", items.stream().map(this::toMap).toList());
         return r;
+    }
+
+    private double promedio(List<Valoracion> items) {
+        if (items == null || items.isEmpty()) return 0;
+        return Math.round(items.stream().mapToInt(Valoracion::getPuntaje).average().orElse(0) * 10.0) / 10.0;
     }
 
     private Map<String, Object> toMap(Valoracion v) {

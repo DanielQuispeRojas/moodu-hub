@@ -2,9 +2,13 @@ package com.idastasoft.licencias.service;
 
 import com.idastasoft.licencias.model.Licencia;
 import com.idastasoft.licencias.model.LicenciaModulo;
+import com.idastasoft.licencias.model.LicenciaPack;
 import com.idastasoft.licencias.model.Maquina;
 import com.idastasoft.licencias.model.ModuloCatalogo;
+import com.idastasoft.licencias.model.PackDispositivos;
+import com.idastasoft.licencias.model.TipoMoodu;
 import com.idastasoft.licencias.repository.LicenciaModuloRepo;
+import com.idastasoft.licencias.repository.LicenciaPackRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
@@ -27,14 +31,20 @@ public class LicenciaService {
     private final LicenciaModuloRepo terminoRepo;
     private final PlanComprapeService planComprapeService;
     private final ModuloCatalogoRepo moduloRepo;
+    private final PackDispositivosService packDispositivosService;
+    private final LicenciaPackRepo licenciaPackRepo;
 
     public LicenciaService(LicenciaRepo licenciaRepo, MaquinaRepo maquinaRepo, LicenciaModuloRepo terminoRepo,
-                           PlanComprapeService planComprapeService, ModuloCatalogoRepo moduloRepo) {
+                           PlanComprapeService planComprapeService, ModuloCatalogoRepo moduloRepo,
+                           PackDispositivosService packDispositivosService,
+                           LicenciaPackRepo licenciaPackRepo) {
         this.licenciaRepo = licenciaRepo;
         this.maquinaRepo = maquinaRepo;
         this.terminoRepo = terminoRepo;
         this.planComprapeService = planComprapeService;
         this.moduloRepo = moduloRepo;
+        this.packDispositivosService = packDispositivosService;
+        this.licenciaPackRepo = licenciaPackRepo;
     }
 
     /**
@@ -367,10 +377,12 @@ public class LicenciaService {
         long activas = maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId());
         Maquina m = maquinaRepo.findByLicenciaIdAndIdHardware(l.getId(), idHardware).orElse(null);
         if (m == null) {
-            if (activas >= l.getMaquinasPermitidas()) {
+            // PRO = dispositivos ilimitados: el cupo no aplica (0 = ilimitado).
+            if (!tipoDe(l).maquinasIlimitadas() && activas >= maquinasEfectivas(l)) {
                 return Map.of("ok", false, "mensaje",
-                    "Ha superado el numero de maquinas permitidas (" + l.getMaquinasPermitidas()
-                        + "). Desligue una maquina en su cuenta de MOODU o amplie su licencia.");
+                    "Ha superado el numero de maquinas permitidas (" + maquinasEfectivas(l)
+                        + "). Desligue una maquina en su cuenta de MOODU, amplie su licencia o "
+                        + "compre un pack de dispositivos adicionales.");
             }
             m = new Maquina();
             m.setLicencia(l);
@@ -391,17 +403,7 @@ public class LicenciaService {
             maquinaRepo.save(m);
         }
 
-        return Map.of(
-            "ok", true,
-            "mensaje", "Licencia valida",
-            "correo", l.getCorreo(),
-            "modulos", modulosHabilitados(l),
-            "modulosDetalle", detallesModulos(l),
-            "maquinasPermitidas", l.getMaquinasPermitidas(),
-            "maquinasActivas", maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()),
-            "expiracion", calcularExpiracion(l) != null ? calcularExpiracion(l).toString() : "INDEFINIDO",
-            "vigente", true
-        );
+        return bloqueLicencia(l, maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()));
     }
 
     /**
@@ -423,17 +425,175 @@ public class LicenciaService {
         if (!estaVigente(l)) {
             return Map.of("ok", false, "mensaje", "La licencia ha expirado. Renuevela para continuar.");
         }
-        return Map.of(
-            "ok", true,
-            "mensaje", "Licencia valida",
-            "correo", l.getCorreo(),
-            "modulos", modulosHabilitados(l),
-            "modulosDetalle", detallesModulos(l),
-            "maquinasPermitidas", l.getMaquinasPermitidas(),
-            "maquinasActivas", maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()),
-            "expiracion", calcularExpiracion(l) != null ? calcularExpiracion(l).toString() : "INDEFINIDO",
-            "vigente", true
-        );
+        return bloqueLicencia(l, maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()));
+    }
+
+    // ─── TIPO DE MOODU (GRATIS / PLUS / PRO) ──────────────────────────
+
+    /**
+     * Tipo de MOODU de la licencia, deducido de sus modulos
+     * ({@code moodu_pro} &gt; {@code moodu_plus} &gt; GRATIS). Es la MISMA verdad
+     * que ve la Tienda: no hay un campo mas que pueda contradecirla.
+     */
+    public TipoMoodu tipoDe(Licencia l) {
+        return TipoMoodu.deLicencia(modulosHabilitados(l));
+    }
+
+    /**
+     * Cupo de maquinas EFECTIVO: el de la licencia mas los dispositivos extra del
+     * pack comprado (si esta vigente). Con PRO (PRO = ilimitados) devuelve 0,
+     * que el core y el Hub interpretan como "sin tope".
+     */
+    public int maquinasEfectivas(Licencia l) {
+        if (tipoDe(l).maquinasIlimitadas()) return 0;
+        return l.getMaquinasPermitidas() + packDispositivosService.dispositivosExtraDe(l);
+    }
+
+    /**
+     * Cuerpo comun de {@code /validar} y {@code /estado}. Va en
+     * {@link LinkedHashMap} y no en {@code Map.of} a proposito: {@code Map.of}
+     * admite 10 pares como maximo y la respuesta ya lleva mas (si se pasa,
+     * revienta en runtime con "too many arguments").
+     */
+    private Map<String, Object> bloqueLicencia(Licencia l, long maquinasActivas) {
+        TipoMoodu tipo = tipoDe(l);
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("ok", true);
+        res.put("mensaje", "Licencia valida");
+        res.put("correo", l.getCorreo());
+        res.put("modulos", modulosHabilitados(l));
+        res.put("modulosDetalle", detallesModulos(l));
+        res.put("maquinasPermitidas", maquinasEfectivas(l));
+        res.put("maquinasBase", l.getMaquinasPermitidas());
+        res.put("maquinasActivas", maquinasActivas);
+        res.put("expiracion", calcularExpiracion(l) != null ? calcularExpiracion(l).toString() : "INDEFINIDO");
+        res.put("vigente", true);
+        // Tipo de MOODU y que habilita (el core aplica las capacidades).
+        res.put("tipoMoodu", tipo.name());
+        res.put("capacidades", tipo.capacidades());
+        res.put("dispositivosIlimitados", tipo.maquinasIlimitadas());
+        return res;
+    }
+
+    // ─── PACKS DE DISPOSITIVOS (REQ-HUB-PACK-DISP-01) ───────────────
+
+    /** Catalogo de packs con precios (lo que ve la Tienda > Dispositivos). */
+    public List<PackDispositivos> catalogoPacks() {
+        return packDispositivosService.catalogo();
+    }
+
+    /**
+     * Estado del cupo de dispositivos de una licencia: base + extra del pack,
+     * con el plan y hasta cuando vigente. SOLO LECTURA (no consume cupo ni
+     * maquina, como consultarEstado) para que la Tienda lo pueda consultar
+     * seguido.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> estadoDispositivos(String correo, String clave) {
+        Licencia l = licenciaRepo.findByCorreoAndClaveActivacion(correo, clave).orElse(null);
+        Map<String, Object> res = new LinkedHashMap<>();
+        if (l == null) {
+            res.put("ok", false);
+            res.put("mensaje", "Clave invalida o licencia no activada.");
+            return res;
+        }
+        if (!l.isActiva() || !estaVigente(l)) {
+            res.put("ok", false);
+            res.put("mensaje", l.isActiva()
+                ? "La licencia ha expirado. Renuevela para continuar." : "La licencia esta desactivada.");
+            return res;
+        }
+        TipoMoodu tipo = tipoDe(l);
+        LicenciaPack lp = packDispositivosService.packDe(l);
+        PackDispositivos pack = lp == null ? null : packDispositivosService.pack(lp.getCodigo());
+        long activas = maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId());
+
+        res.put("ok", true);
+        res.put("mensaje", "Cupo de dispositivos");
+        res.put("tipoMoodu", tipo.name());
+        res.put("ilimitados", tipo.maquinasIlimitadas());
+        res.put("base", l.getMaquinasPermitidas());
+        res.put("extra", packDispositivosService.dispositivosExtraDe(l));
+        res.put("total", maquinasEfectivas(l)); // 0 = ilimitado (PRO)
+        res.put("activos", activas);
+        res.put("codigoPack", lp == null ? null : lp.getCodigo());
+        res.put("plan", lp == null ? null : lp.getPlan());
+        res.put("vigenteHasta", lp == null || lp.getVigenciaHasta() == null
+            ? null : lp.getVigenciaHasta().toString());
+        res.put("packs", packDispositivosService.catalogo());
+        // Con PRO el pack no hace falta: lo dice claro para que no se cobre de mas.
+        res.put("motivoNoHacefalta", tipo.maquinasIlimitadas()
+            ? "MOODU Pro ya incluye dispositivos ilimitados: no necesita packs."
+            : null);
+        return res;
+    }
+
+    /**
+     * Compra (o reemplaza) el pack de dispositivos de la licencia. UNA compra =
+     * un pack activo: el nuevo reemplaza al anterior y el cupo queda en
+     * base + el nuevo. El pago lo realiza MOODU fuera del Hub (hoy presencial,
+     * §11.90): aca queda el registro; el admin puede ajustar el plan si hace
+     * falta.
+     *
+     * @param plan MENSUAL o PERMANENTE
+     */
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
+    public Map<String, Object> comprarPackDispositivos(String correo, String clave, String codigo, String plan) {
+        Licencia l = licenciaRepo.findByCorreoAndClaveActivacion(correo, clave).orElse(null);
+        if (l == null) {
+            return Map.of("ok", false, "mensaje", "Clave invalida o licencia no activada.");
+        }
+        if (!l.isActiva() || !estaVigente(l)) {
+            return Map.of("ok", false, "mensaje", "La licencia no esta vigente: no se puede ampliar el cupo.");
+        }
+        TipoMoodu tipo = tipoDe(l);
+        if (tipo.maquinasIlimitadas()) {
+            return Map.of("ok", false, "mensaje",
+                "MOODU Pro ya incluye dispositivos ilimitados: no necesita packs.");
+        }
+        PackDispositivos p = packDispositivosService.pack(codigo);
+        if (p == null || !p.isActivo()) {
+            return Map.of("ok", false, "mensaje", "Ese pack no existe o no esta disponible.");
+        }
+        LicenciaPack lp = licenciaPackRepo.findByLicencia(l).orElseGet(LicenciaPack::new);
+        if (!p.tienePrecio(plan)) {
+            return Map.of("ok", false, "mensaje",
+                "Ese pack no se ofrece con la forma de pago indicada.");
+        }
+        lp.setLicencia(l);
+        lp.setCodigo(p.getCodigo());
+        try {
+            lp.setPlan(plan);
+        } catch (IllegalArgumentException e) {
+            // setPlan ya deja MENSUAL si viene vacio; solo llega aqui si el texto es basura.
+            return Map.of("ok", false, "mensaje", e.getMessage());
+        }
+        if (lp.getPlanEnum() == LicenciaPack.Plan.MENSUAL) {
+            // Prorrogable: si ya tenia un mensual vigente, se suma un mes desde su vencimiento.
+            LocalDateTime desde = LocalDateTime.now();
+            if (lp.getVigenciaHasta() != null && lp.getVigenciaHasta().isAfter(desde)) {
+                desde = lp.getVigenciaHasta();
+            }
+            lp.setVigenciaHasta(desde.plusMonths(1));
+        } else {
+            lp.setVigenciaHasta(null); // permanente
+        }
+        lp.setActivo(true);
+        lp.setFechaCompra(LocalDateTime.now());
+        licenciaPackRepo.save(lp);
+        return estadoDispositivos(correo, clave);
+    }
+
+    /** Desactiva el pack (el cupo vuelve al base). Devuelve true si habia pack. */
+    @Transactional
+    public boolean quitarPackDispositivos(String correo) {
+        return licenciaRepo.findByCorreo(correo).map(l -> {
+            return licenciaPackRepo.findByLicencia(l).map(lp -> {
+                lp.setActivo(false);
+                licenciaPackRepo.save(lp);
+                return true;
+            }).orElse(false);
+        }).orElse(false);
     }
 
     /** Desactiva una maquina (robo/venta). Devuelve true si estaba activa. */

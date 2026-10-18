@@ -9,10 +9,15 @@ import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.ContactoService;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.ModuloPlanService;
+import com.idastasoft.licencias.service.ParametroService;
+import com.idastasoft.licencias.service.ValoracionService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -33,16 +38,22 @@ public class CatalogoController {
     private final ModuloPlanService planService;
     private final HubConfigService hubConfig;
     private final ContactoService contactoService;
+    private final ParametroService parametroService;
+    private final ValoracionService valoracionService;
 
     public CatalogoController(ModuloCatalogoRepo moduloRepo, ModuloFotoRepo fotoRepo,
-                               VersionSistemaRepo versionRepo, ModuloPlanService planService,
-                               HubConfigService hubConfig, ContactoService contactoService) {
+                               VersionSistemaRepo versionRepo, ModuloPlanService planPlanService,
+                               HubConfigService hubConfig, ContactoService contactoService,
+                               ParametroService parametroService,
+                               ValoracionService valoracionService) {
         this.moduloRepo = moduloRepo;
         this.fotoRepo = fotoRepo;
         this.versionRepo = versionRepo;
-        this.planService = planService;
+        this.planService = planPlanService;
         this.hubConfig = hubConfig;
         this.contactoService = contactoService;
+        this.parametroService = parametroService;
+        this.valoracionService = valoracionService;
     }
 
     private ModuloCatalogo conFotos(ModuloCatalogo m) {
@@ -77,6 +88,10 @@ public class CatalogoController {
         out.put("vigenciaDias", m.getVigenciaDias());
         out.put("activo", m.isActivo());
         out.put("planes", planService.planesPublicos(m.getId(), m));
+        // Reputacion del modulo (solo lo visible): la Tienda la muestra en la
+        // tarjeta para que el usuario vea las opiniones sin abrir el detalle
+        // (REQ-HUB-OPINIONES-01). El resumen completo sigue en /api/valoraciones.
+        out.put("valoracion", valoracionService.resumen(m.getClave()));
         return out;
     }
 
@@ -112,6 +127,70 @@ public class CatalogoController {
         out.put("contacto", contactoService.mapa());
         out.put("sitioWeb", hubConfig.getSitioWeb());
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Tarjeta de identidad del Hub: donde esta, donde esta la tienda Comprape y
+     * si se anuncia una mudanza de hosting (REQ-HUB-DESCUBRIMIENTO-01).
+     *
+     * <p>El desktop lo usa para 2 cosas: (a) avisar con plazo que el Hub actual
+     * se va a mudar, (b) saber la URL de Comprape sin que el usuario la escriba.
+     * La mudanza solo se anuncia si hay URL nueva: sin destino no hay nada que
+     * hacer.</p>
+     *
+     * <p>Este aviso vive mientras el Hub VIEJO siga vivo (es lo unico que puede
+     * anunciarlo a tiempo). Cuando ya cayo, el desktop cae al descriptor estatico
+     * (GitHub/moodu.com) que publica el admin: por eso son dos mecanismos.</p>
+     */
+    @GetMapping("/hub")
+    public ResponseEntity<?> hub(HttpServletRequest req) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.putAll(parametroService.mudanzaYUrls(urlBase(req)));
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Imagen de la portada de Soporte (la que sube el admin). Los bytes salen
+     * del base64 guardado en BD (el disco del hosting es efimero). Cache largo:
+     * la portada cambia solo cuando el admin la cambia.
+     */
+    @GetMapping("/portada/{id}")
+    public ResponseEntity<?> portada(@PathVariable Integer id) {
+        byte[] bytes = contactoService.portadaBytes(id);
+        if (bytes == null || bytes.length == 0) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .contentType(mimeImagen(bytes))
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+                .body(bytes);
+    }
+
+    /** PNG / JPEG / WEBP por los bytes magicos (no por la extension). */
+    private static MediaType mimeImagen(byte[] b) {
+        if (b.length > 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+            return MediaType.IMAGE_PNG;
+        }
+        if (b.length > 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8) {
+            return MediaType.IMAGE_JPEG;
+        }
+        if (b.length > 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
+                && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') {
+            return MediaType.parseMediaType("image/webp");
+        }
+        return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    /** URL publica del Hub deducida de la peticion (respeta el proxy: X-Forwarded-Proto). */
+    private static String urlBase(HttpServletRequest req) {
+        if (req == null) return null;
+        String proto = req.getHeader("X-Forwarded-Proto");
+        if (proto == null || proto.isBlank()) proto = req.getScheme();
+        String host = req.getHeader("X-Forwarded-Host");
+        if (host == null || host.isBlank()) host = req.getHeader("Host");
+        if (host == null || host.isBlank()) return null;
+        return proto + "://" + host;
     }
 
     /** Fotos de un modulo (solo metadata; los bytes van por /fotos/{id}). */

@@ -21,6 +21,7 @@ import com.idastasoft.licencias.service.PlanComprapeService;
 import com.idastasoft.licencias.model.HubContacto;
 import com.idastasoft.licencias.service.ContactoService;
 import com.idastasoft.licencias.service.ModuloPlanService;
+import com.idastasoft.licencias.service.ParametroService;
 import com.idastasoft.licencias.service.TemaCatalogoService;
 import com.idastasoft.licencias.service.ValoracionService;
 import org.springframework.http.ResponseEntity;
@@ -53,6 +54,7 @@ public class AdminGestionController {
     private final PlanComprapeService planComprapeService;
     private final ModuloPlanService planService;
     private final ContactoService contactoService;
+    private final ParametroService parametroService;
 
     public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
@@ -67,7 +69,8 @@ public class AdminGestionController {
                                   TemaCatalogoRepo temaCatalogoRepo,
                                    PlanComprapeService planComprapeService,
                                    ModuloPlanService planService,
-                                   ContactoService contactoService) {
+                                   ContactoService contactoService,
+                                   ParametroService parametroService) {
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -83,6 +86,7 @@ public class AdminGestionController {
         this.planComprapeService = planComprapeService;
         this.planService = planService;
         this.contactoService = contactoService;
+        this.parametroService = parametroService;
     }
 
     // ─── LICENCIAS ──────────────────────────────
@@ -256,7 +260,7 @@ public class AdminGestionController {
     public ResponseEntity<?> verContacto() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
-        out.put("contacto", contactoService.mapa());
+        out.put("contacto", contactoService.mapaAdmin());
         out.put("sitioWeb", hubConfigService.getSitioWeb());
         return ResponseEntity.ok(out);
     }
@@ -268,7 +272,35 @@ public class AdminGestionController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("mensaje", "Medios de contacto guardados.");
-        out.put("contacto", c.comoMapa());
+        out.put("contacto", c.comoMapa(true));
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Parametros editables en caliente (REQ-HUB-DESCUBRIMIENTO-01): URL publica
+     * del Hub, URL de la tienda Comprape y el aviso de mudanza de hosting.
+     *
+     * <p>Viven en BD y no en hub-config.json a proposito: un aviso de mudanza
+     * tiene que poder publicarse SIN redesplegar (para cuando se necesita, el
+     * Hub viejo ya cayo) y el disco del hosting es efimero.</p>
+     */
+    @GetMapping("/config/parametros")
+    public ResponseEntity<?> verParametros() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("parametros", parametroService.mapa());
+        return ResponseEntity.ok(out);
+    }
+
+    @PutMapping("/config/parametros")
+    public ResponseEntity<?> guardarParametros(@RequestBody Map<String, Object> body) {
+        Object datos = body.get("parametros");
+        Map<String, Object> mapa = datos instanceof Map ? castMapa(datos) : body;
+        parametroService.guardarVarios(mapa, "admin");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("mensaje", "Parametros guardados.");
+        out.put("parametros", parametroService.mapa());
         return ResponseEntity.ok(out);
     }
 

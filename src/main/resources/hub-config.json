@@ -7,7 +7,9 @@
     "notas": "Monto que MOODU se queda por cada venta de modulo de tercero en la tienda."
   },
   "contacto": {
-    "_notas": "Estos son los medios que la Tienda de MOODU muestra en el modal 'Mejorar Plan'. Editalos aqui (no hace falta recompilar): whatsapp con codigo de pais, ej. 51987654321.",
+    "_notas": "Estos son los medios que la Tienda de MOODU muestra en el modal 'Mejorar Plan' y en Configuracion > Soporte. Editalos en el panel (MOODU Hub > Soporte), no hace falta recompilar. Whatsapp con codigo de pais, ej. 51987654321.",
+    "_redes": "Lista libre de enlaces que el usuario ve como 'Clave' + boton Abrir. Ej.: [{clave: Whatsapp, valor: https://wa.me/51987654321, icono: 'bi bi-whatsapp'}]. Maximo 12.",
+    "_portada": "Imagenes de la portada de Soporte: [{titulo, url, imagen(base64), enlace}]. Maximo 8, 1.5 MB cada una. Con 'imagen' la sube el panel; con 'url' la toma de internet. Solo se aplica la primera vez (despues manda la base de datos).",
     "whatsapp": "",
     "correo": "",
     "telefono": "",

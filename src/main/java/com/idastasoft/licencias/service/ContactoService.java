@@ -41,7 +41,27 @@ public class ContactoService {
 
     /** Solo los medios con valor (los vacios no se exponen). */
     public Map<String, Object> mapa() {
-        return obtener().comoMapa();
+        return obtener().comoMapa(false);
+    }
+
+    /** Como {@link #mapa()} pero con el archivo de la portada (solo el admin). */
+    public Map<String, Object> mapaAdmin() {
+        return obtener().comoMapa(true);
+    }
+
+    /** Lista libre de redes/enlaces (clave + valor), ya validada. */
+    public java.util.List<Map<String, Object>> redes() {
+        return obtener().redes();
+    }
+
+    /** Portada del slider de Soporte (con el base64: solo la usa el admin). */
+    public java.util.List<Map<String, Object>> portada() {
+        return obtener().portada();
+    }
+
+    /** Bytes de una imagen de la portada (id del slide). Null si no existe. */
+    public byte[] portadaBytes(int id) {
+        return obtener().portadaBytes(id);
     }
 
     @Transactional

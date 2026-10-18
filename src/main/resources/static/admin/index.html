@@ -14,6 +14,8 @@
     .badge { font-size:.72rem; }
     .chip-row { display:flex; flex-wrap:wrap; gap:.4rem; }
     .form-hint { font-size:.72rem; color:#9ca3af; }
+    /* Miniatura de la portada del slider de Soporte */
+    .portada-mini { width:72px; height:44px; object-fit:cover; border-radius:6px; background:#f1f3f5; }
     .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; }
     .login-card { width:100%; max-width:420px; }
     .nav-tabs .nav-link { color:#4b5563; }
@@ -61,7 +63,7 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='cat'}" @click="tab='cat'">Catálogo</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='val'}" @click="tab='val'; cargarValoraciones()">Valoraciones</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='temas'}" @click="tab='temas'; cargarTemas()">Temas</button></li>
-      <li class="nav-item"><button class="nav-link" :class="{active: tab==='cfg'}" @click="tab='cfg'; cargarContacto()">Soporte</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='cfg'}" @click="tab='cfg'; cargarContacto(); cargarParametros()">Soporte</button></li>
     </ul>
 
     <!-- ============ LICENCIAS ============ -->
@@ -988,6 +990,171 @@
           <button class="btn btn-outline-secondary btn-sm ms-1" @click="cargarContacto">Recargar</button>
         </div>
       </div>
+
+      <!-- ============ ENLACES DE CONTACTO (lista libre, REQ-HUB-SOPORTE-01) ============ -->
+      <div class="card p-3 mb-3">
+        <h6 class="mb-1"><i class="bi bi-link-45deg me-1"></i>Enlaces de contacto</h6>
+        <div class="form-hint mb-3">
+          Escribe la clave como la vera el usuario (ej. <strong>Whatsapp</strong>) y el enlace.
+          En MOODU aparece como "Whatsapp" con un boton <strong>Abrir</strong>. Puedes agregar
+          los que quieras: Facebook, Instagram, Telegram, TikTok, YouTube, un foro, un formulario...
+          Maximo 12.
+        </div>
+        <div v-if="!contactoForm.redes.length" class="form-hint mb-2">
+          Todavia no hay enlaces. Con "Agregar enlace" creas el primero.
+        </div>
+        <div v-for="(r, i) in contactoForm.redes" :key="'rd' + i" class="row g-2 align-items-end mb-2">
+          <div class="col-md-3">
+            <label class="form-label small mb-0" :for="'rd-clave-' + i">Clave</label>
+            <input :id="'rd-clave-' + i" v-model="r.clave" class="form-control form-control-sm" placeholder="Whatsapp" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-0" :for="'rd-valor-' + i">Enlace</label>
+            <input :id="'rd-valor-' + i" v-model="r.valor" class="form-control form-control-sm"
+                   placeholder="https://wa.me/51987654321" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0" :for="'rd-icono-' + i">Icono</label>
+            <select :id="'rd-icono-' + i" v-model="r.icono" class="form-select form-select-sm">
+              <option v-for="ic in ICONOS_CONTACTO" :key="ic.v" :value="ic.v">{{ ic.t }}</option>
+            </select>
+          </div>
+          <div class="col-md-1 text-end">
+            <button class="btn btn-outline-danger btn-sm" type="button" title="Quitar enlace"
+                    @click="quitarRed(i)"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+        <div class="mt-2">
+          <button class="btn btn-outline-primary btn-sm" type="button" :disabled="contactoForm.redes.length >= MAX_REDES"
+                  @click="agregarRed"><i class="bi bi-plus-lg me-1"></i>Agregar enlace</button>
+          <button class="btn btn-primary btn-sm ms-1" :disabled="guardandoContacto" @click="guardarContacto">
+            <span v-if="guardandoContacto" class="spinner-border spinner-border-sm me-1"></span>Guardar enlaces
+          </button>
+        </div>
+      </div>
+
+      <!-- ============ PORTADA de la seccion Soporte (slider) ============ -->
+      <div class="card p-3 mb-3">
+        <h6 class="mb-1"><i class="bi bi-images me-1"></i>Portada de Soporte</h6>
+        <div class="form-hint mb-3">
+          Imagenes que MOODU muestra como portada en la seccion Soporte (y en la Tienda).
+          Puedes subir el archivo (se guarda en la base del Hub, maximo 1.5 MB por imagen)
+          o pegar el enlace de una imagen que ya tengas en internet. Maximo 8.
+        </div>
+        <div v-if="!contactoForm.portada.length" class="form-hint mb-2">
+          Sin imagenes: MOODU mostrara solo los enlaces de contacto.
+        </div>
+        <div v-for="(p, i) in contactoForm.portada" :key="'pt' + i"
+             class="row g-2 align-items-center mb-2 border rounded p-2">
+          <div class="col-auto">
+            <img :src="imagenPortadaSrc(p, i)" alt="" class="portada-mini" />
+          </div>
+          <div class="col">
+            <div class="fw-semibold">{{ p.titulo || ('Imagen ' + (i + 1)) }}</div>
+            <div class="form-hint">{{ p.enlace || 'Sin enlace' }}</div>
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-outline-secondary btn-sm" type="button" title="Subir" :disabled="i === 0"
+                    @click="moverPortada(i, -1)"><i class="bi bi-arrow-up"></i></button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" title="Bajar" :disabled="i === contactoForm.portada.length - 1"
+                    @click="moverPortada(i, 1)"><i class="bi bi-arrow-down"></i></button>
+            <button class="btn btn-outline-danger btn-sm" type="button" title="Quitar"
+                    @click="quitarPortada(i)"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+        <div class="row g-2 align-items-end border-top pt-3 mt-1">
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="pt-archivo">Subir imagen</label>
+            <input id="pt-archivo" type="file" accept="image/png,image/jpeg,image/webp"
+                   class="form-control form-control-sm" @change="elegirPortadaImagen" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="pt-url">O enlace de imagen</label>
+            <input id="pt-url" v-model="portadaForm.url" class="form-control form-control-sm"
+                   placeholder="https://.../imagen.png" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0" for="pt-titulo">Titulo</label>
+            <input id="pt-titulo" v-model="portadaForm.titulo" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0" for="pt-enlace">Enlace</label>
+            <input id="pt-enlace" v-model="portadaForm.enlace" class="form-control form-control-sm"
+                   placeholder="https://moodu.com" />
+          </div>
+        </div>
+        <div class="mt-2">
+          <button class="btn btn-outline-primary btn-sm" type="button" :disabled="!portadaForm.imagenPendiente || contactoForm.portada.length >= MAX_PORTADA"
+                  @click="agregarPortadaImagen"><i class="bi bi-plus-lg me-1"></i>Agregar imagen</button>
+          <button class="btn btn-outline-primary btn-sm ms-1" type="button" :disabled="contactoForm.portada.length >= MAX_PORTADA"
+                  @click="agregarPortadaUrl"><i class="bi bi-plus-lg me-1"></i>Agregar con el enlace</button>
+          <button class="btn btn-primary btn-sm ms-1" :disabled="guardandoContacto" @click="guardarContacto">
+            <span v-if="guardandoContacto" class="spinner-border spinner-border-sm me-1"></span>Guardar portada
+          </button>
+          <span v-if="portadaMsg" class="form-hint ms-2" :class="{ 'text-danger': portadaMsgOk === false }">{{ portadaMsg }}</span>
+        </div>
+      </div>
+
+      <!-- ============ PARAMETROS del Hub (mudanza de hosting, REQ-HUB-DESCUBRIMIENTO-01) ============ -->
+      <div class="card p-3 mb-3">
+        <h6 class="mb-1"><i class="bi bi-hdd-network me-1"></i>Direccion del Hub</h6>
+        <div class="form-hint mb-3">
+          Si en algun momento el Hub cambia de hosting (Render a otro, oRender a AWS), announces
+          la mudanza aqui y MOODU avisa a todos los equipos antes de que la URL vieja deje de
+          funcionar. Ademas se guarda la direccion de la tienda Comprape, para que el usuario
+          no tenga que escribirla a mano.
+        </div>
+        <div v-if="paramMsg" class="alert" :class="paramOk ? 'alert-success' : 'alert-danger'">{{ paramMsg }}</div>
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label small mb-0" for="pm-hub">URL publica del Hub</label>
+            <input id="pm-hub" v-model="paramForm.HUB_URL" class="form-control form-control-sm"
+                   placeholder="https://moodu-hub.onrender.com" />
+            <div class="form-hint">Vacio = se deduce de la peticion.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-0" for="pm-comp">URL de la tienda Comprape</label>
+            <input id="pm-comp" v-model="paramForm.COMPRAPE_URL" class="form-control form-control-sm"
+                   placeholder="https://comprape.moodu.com" />
+          </div>
+        </div>
+        <div class="border rounded p-2 mt-3">
+          <div class="form-check form-switch">
+            <input id="pm-mud-activa" v-model="paramBool.MUDANZA_ACTIVA" class="form-check-input" type="checkbox" />
+            <label class="form-check-label" for="pm-mud-activa">
+              <strong>Anunciar mudanza de hosting</strong>
+            </label>
+          </div>
+          <div class="form-hint mb-2">
+            Con esto encendido, MOODU muestra un aviso con el plazo y un boton para apuntar a la
+            direccion nueva. El aviso se publica desde el Hub viejo (es lo unico que aun
+            responde a tiempo); cuando ya cayo, MOODU lo busca solo en la lista de direcciones
+            publicada en el repositorio.
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="pm-mud-url">URL nueva del Hub</label>
+              <input id="pm-mud-url" v-model="paramForm.MUDANZA_URL_NUEVA" class="form-control form-control-sm"
+                     placeholder="https://api.moodu.com" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="pm-mud-fecha">Fecha limite</label>
+              <input id="pm-mud-fecha" v-model="paramForm.MUDANZA_FECHA_LIMITE" type="date" class="form-control form-control-sm" />
+            </div>
+            <div class="col-12">
+              <label class="form-label small mb-0" for="pm-mud-msg">Mensaje para el usuario</label>
+              <input id="pm-mud-msg" v-model="paramForm.MUDANZA_MENSAJE" class="form-control form-control-sm"
+                     placeholder="MOODU se muda de servidor el 15 de noviembre. Actualiza tu direccion." />
+            </div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-primary btn-sm" :disabled="guardandoParam" @click="guardarParametros">
+            <span v-if="guardandoParam" class="spinner-border spinner-border-sm me-1"></span>Guardar parametros
+          </button>
+          <button class="btn btn-outline-secondary btn-sm ms-1" @click="cargarParametros">Recargar</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1100,11 +1267,111 @@ createApp({
       moduloParaAgregar.value = ''
     }
 
-    // ─── MEDIOS DE CONTACTO del soporte (REQ-HUB-PLANES-01) ───
-    const contactoForm = reactive({ whatsapp:'', correo:'', telefono:'', fanpage:'', telegram:'', instagram:'', web:'' })
+    // ─── MEDIOS DE CONTACTO del soporte (REQ-HUB-PLANES-01 / REQ-HUB-SOPORTE-01) ───
+    const CAMPOS_CONTACTO = ['whatsapp','correo','telefono','fanpage','telegram','instagram','web']
+    const MAX_REDES = 12
+    const MAX_PORTADA = 8
+    const MAX_BYTES_PORTADA = 1572864 // 1.5 MB
+    // Iconos disponibles para los enlaces libres (clase de Bootstrap Icons).
+    const ICONOS_CONTACTO = [
+      { v: 'bi bi-link-45deg', t: 'Enlace' },
+      { v: 'bi bi-whatsapp', t: 'Whatsapp' },
+      { v: 'bi bi-telephone', t: 'Telefono' },
+      { v: 'bi bi-envelope', t: 'Correo' },
+      { v: 'bi bi-globe', t: 'Web' },
+      { v: 'bi bi-facebook', t: 'Facebook' },
+      { v: 'bi bi-instagram', t: 'Instagram' },
+      { v: 'bi bi-telegram', t: 'Telegram' },
+      { v: 'bi bi-tiktok', t: 'TikTok' },
+      { v: 'bi bi-youtube', t: 'YouTube' },
+      { v: 'bi bi-linkedin', t: 'LinkedIn' },
+      { v: 'bi bi-twitter-x', t: 'X' },
+      { v: 'bi bi-chat-dots', t: 'Chat / foro' }
+    ]
+    // Los 7 campos fijos + las dos listas. Los escalares se rellenan con '';
+    // redes y portada son SIEMPRE arreglos (el v-for los recorre sin guardas).
+    const contactoForm = reactive({
+      whatsapp: '', correo: '', telefono: '', fanpage: '', telegram: '', instagram: '', web: '',
+      redes: [], portada: []
+    })
     const contactoMsg = ref('')
     const contactoOk = ref(true)
     const guardandoContacto = ref(false)
+    // Formulario de la portada (se suma al guardar, no se manda sola).
+    const portadaForm = reactive({ url: '', titulo: '', enlace: '' })
+    const portadaMsg = ref('')
+    const portadaMsgOk = ref(true)
+
+    function limpiarPortadaMsg() { portadaMsg.value = ''; portadaMsgOk.value = true }
+
+    function agregarRed() {
+      if (contactoForm.redes.length >= MAX_REDES) return
+      contactoForm.redes.push({ clave: '', valor: '', icono: 'bi bi-link-45deg' })
+    }
+    function quitarRed(i) { contactoForm.redes.splice(i, 1) }
+
+    /** Miniatura: el archivo cargado (dataURL) o el enlace externo. */
+    function imagenPortadaSrc(p, i) {
+      if (p.imagen) return p.imagen
+      if (p.url) return p.url
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="44"><rect width="72" height="44" fill="#e9ecef"/><text x="36" y="26" font-size="10" text-anchor="middle" fill="#868e96">sin imagen</text></svg>'
+      )
+    }
+    function elegirPortadaImagen(ev) {
+      limpiarPortadaMsg()
+      const file = ev.target.files && ev.target.files[0]
+      if (!file) return
+      if (file.size > MAX_BYTES_PORTADA) {
+        portadaMsgOk.value = false
+        portadaMsg.value = 'La imagen supera 1.5 MB (' + Math.round(file.size / 1024) + ' KB).'
+        ev.target.value = ''
+        return
+      }
+      const fr = new FileReader()
+      fr.onload = () => {
+        portadaForm.imagenPendiente = String(fr.result)
+        portadaMsg.value = 'Imagen cargada (' + Math.round(file.size / 1024) + ' KB). Presiona "Agregar imagen".'
+        ev.target.value = ''
+      }
+      fr.onerror = () => {
+        portadaMsgOk.value = false
+        portadaMsg.value = 'No se pudo leer el archivo.'
+      }
+      fr.readAsDataURL(file)
+    }
+    function agregarPortadaUrl() {
+      limpiarPortadaMsg()
+      const url = (portadaForm.url || '').trim()
+      if (!url) { portadaMsgOk.value = false; portadaMsg.value = 'Escribe el enlace de la imagen.'; return }
+      if (contactoForm.portada.length >= MAX_PORTADA) return
+      contactoForm.portada.push({
+        imagen: portadaForm.imagenPendiente || null,
+        url: portadaForm.imagenPendiente ? null : url,
+        titulo: (portadaForm.titulo || '').trim(),
+        enlace: (portadaForm.enlace || '').trim()
+      })
+      portadaForm.url = ''; portadaForm.titulo = ''; portadaForm.enlace = ''; portadaForm.imagenPendiente = null
+    }
+    function agregarPortadaImagen() {
+      limpiarPortadaMsg()
+      if (!portadaForm.imagenPendiente) { portadaMsgOk.value = false; portadaMsg.value = 'Elige primero el archivo.'; return }
+      if (contactoForm.portada.length >= MAX_PORTADA) return
+      contactoForm.portada.push({
+        imagen: portadaForm.imagenPendiente,
+        url: null,
+        titulo: (portadaForm.titulo || '').trim(),
+        enlace: (portadaForm.enlace || '').trim()
+      })
+      portadaForm.url = ''; portadaForm.titulo = ''; portadaForm.enlace = ''; portadaForm.imagenPendiente = null
+    }
+    function quitarPortada(i) { contactoForm.portada.splice(i, 1) }
+    function moverPortada(i, delta) {
+      const j = i + delta
+      const l = contactoForm.portada
+      if (j < 0 || j >= l.length) return
+      const tmp = l[i]; l[i] = l[j]; l[j] = tmp
+    }
 
     async function cargarContacto() {
       if (!token.value) return
@@ -1113,7 +1380,16 @@ createApp({
         const r = await fetch(API + '/api/admin/gestion/config/contacto', { headers: authSolo() })
         const d = await r.json().catch(() => ({}))
         const c = (d && d.contacto) || {}
-        for (const k of Object.keys(contactoForm)) contactoForm[k] = c[k] || ''
+        for (const k of CAMPOS_CONTACTO) contactoForm[k] = c[k] || ''
+        contactoForm.redes = Array.isArray(c.redes)
+          ? c.redes.map(x => ({ clave: x.clave || '', valor: x.valor || '', icono: x.icono || 'bi bi-link-45deg' }))
+          : []
+        // El endpoint admin SI trae el archivo (base64): sin esto, re-guardar
+        // la portada perderia las imagenes ya subidas.
+        contactoForm.portada = Array.isArray(c.portada)
+          ? c.portada.map(p => ({ imagen: p.imagen || null, url: p.url || '', titulo: p.titulo || '', enlace: p.enlace || '' }))
+          : []
+        portadaForm.url = ''; portadaForm.titulo = ''; portadaForm.enlace = ''; portadaForm.imagenPendiente = null
       } catch (e) {
         contactoOk.value = false
         contactoMsg.value = 'No se pudo cargar el contacto.'
@@ -1124,8 +1400,19 @@ createApp({
       guardandoContacto.value = true
       contactoMsg.value = ''
       try {
+        // Solo redes completas (con clave y valor); el backend tambien filtra.
+        const redes = (contactoForm.redes || [])
+          .filter(r => (r.clave || '').trim() && (r.valor || '').trim())
+          .map(r => ({ clave: r.clave.trim(), valor: r.valor.trim(), icono: r.icono || null }))
+        const portada = (contactoForm.portada || [])
+          .filter(p => p.imagen || (p.url || '').trim())
+          .map(p => ({ imagen: p.imagen || null, url: (p.url || '').trim() || null, titulo: (p.titulo || '').trim() || null, enlace: (p.enlace || '').trim() || null }))
+        const cuerpo = {}
+        for (const k of CAMPOS_CONTACTO) cuerpo[k] = contactoForm[k]
+        cuerpo.redes = redes
+        cuerpo.portada = portada
         const r = await fetch(API + '/api/admin/gestion/config/contacto', {
-          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ contacto: { ...contactoForm } })
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ contacto: cuerpo })
         })
         const d = await r.json().catch(() => ({}))
         if (!r.ok || d.ok === false) {
@@ -1133,13 +1420,69 @@ createApp({
           contactoMsg.value = tratarError(d, 'No se pudo guardar el contacto')
         } else {
           contactoOk.value = true
-          contactoMsg.value = 'Medios de contacto guardados. La Tienda los muestra en "Mejorar Plan".'
+          contactoMsg.value = 'Contacto guardado (' + redes.length + ' enlace(s), ' + portada.length + ' imagen(es)).'
+          await cargarContacto()
         }
       } catch (e) {
         contactoOk.value = false
         contactoMsg.value = 'No se pudo guardar el contacto.'
       } finally {
         guardandoContacto.value = false
+      }
+    }
+
+    // ─── PARAMETROS del Hub: URL publica, Comprape y aviso de mudanza ───
+    const PARAM_VACIO = { HUB_URL:'', COMPRAPE_URL:'', MUDANZA_ACTIVA:'', MUDANZA_URL_NUEVA:'', MUDANZA_FECHA_LIMITE:'', MUDANZA_MENSAJE:'' }
+    const paramForm = reactive({ ...PARAM_VACIO })
+    const paramBool = reactive({ MUDANZA_ACTIVA: false })
+    const paramMsg = ref('')
+    const paramOk = ref(true)
+    const guardandoParam = ref(false)
+
+    async function cargarParametros() {
+      if (!token.value) return
+      paramMsg.value = ''
+      try {
+        const r = await fetch(API + '/api/admin/gestion/config/parametros', { headers: authSolo() })
+        const d = await r.json().catch(() => ({}))
+        const p = (d && d.parametros) || {}
+        for (const k of Object.keys(PARAM_VACIO)) paramForm[k] = p[k] || ''
+        paramBool.MUDANZA_ACTIVA = String(p.MUDANZA_ACTIVA || '').toLowerCase() === 'true'
+      } catch (e) {
+        paramOk.value = false
+        paramMsg.value = 'No se pudieron cargar los parametros.'
+      }
+    }
+
+    async function guardarParametros() {
+      guardandoParam.value = true
+      paramMsg.value = ''
+      try {
+        const cuerpo = {}
+        for (const k of Object.keys(PARAM_VACIO)) cuerpo[k] = paramForm[k]
+        cuerpo.MUDANZA_ACTIVA = paramBool.MUDANZA_ACTIVA ? 'true' : 'false'
+        const r = await fetch(API + '/api/admin/gestion/config/parametros', {
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ parametros: cuerpo })
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) {
+          paramOk.value = false
+          paramMsg.value = tratarError(d, 'No se pudieron guardar los parametros')
+        } else {
+          paramOk.value = true
+          const activa = paramBool.MUDANZA_ACTIVA && (paramForm.MUDANZA_URL_NUEVA || '').trim()
+          paramMsg.value = activa
+            ? 'Guardado. MOODU avisara la mudanza a ' + paramForm.MUDANZA_URL_NUEVA + '.'
+            : (paramBool.MUDANZA_ACTIVA
+                ? 'Guardado. Falta la URL nueva: sin ella no se anuncia (no habria a donde ir).'
+                : 'Guardado. No hay aviso de mudanza activo.')
+          await cargarParametros()
+        }
+      } catch (e) {
+        paramOk.value = false
+        paramMsg.value = 'No se pudieron guardar los parametros.'
+      } finally {
+        guardandoParam.value = false
       }
     }
 
@@ -1860,6 +2203,11 @@ createApp({
       editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod, fotoMod, fotosMod, fotoMsg, abrirFotos, subirFoto, eliminarFoto, subirIcono, fotoUrl,
       planesModulo, planNuevo, PLANOS_LIBRES, etiquetaPlan, etiquetaPlanTipo, agregarPlan, quitarPlan, guardarPlanesEditados,
       contactoForm, contactoMsg, contactoOk, guardandoContacto, cargarContacto, guardarContacto,
+      MAX_REDES, MAX_PORTADA, ICONOS_CONTACTO,
+      portadaForm, portadaMsg, portadaMsgOk, agregarRed, quitarRed,
+      agregarPortadaUrl, agregarPortadaImagen, quitarPortada, moverPortada,
+      elegirPortadaImagen, imagenPortadaSrc,
+      paramForm, paramBool, paramMsg, paramOk, guardandoParam, cargarParametros, guardarParametros,
       cargarValoraciones, toggleValoracion, eliminarValoracion,
       cargarValoracionesModulos, promedioMod, verValoracionesModulo,
       temas, temaEditando, temaVer, temaMsg, nuevoT,

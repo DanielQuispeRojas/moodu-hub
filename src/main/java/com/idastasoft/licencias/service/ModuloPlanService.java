@@ -126,6 +126,7 @@ public class ModuloPlanService {
     @Transactional
     public Map<String, Object> guardar(ModuloCatalogo modulo, Map<String, Object> body) {
         ModuloPlan.TipoPlan tipo = parseTipo(body.get("tipo"));
+        exigirPeriodicidadDelTier(modulo, tipo);
         int periodos = intDe(body.get("periodos"), 1);
         BigDecimal precio = precioDe(body.get("precio"));
 
