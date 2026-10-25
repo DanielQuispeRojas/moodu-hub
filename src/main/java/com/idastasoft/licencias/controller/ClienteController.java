@@ -103,4 +103,15 @@ public class ClienteController {
         return ResponseEntity.ok(Map.of("ok", ok, "mensaje",
             ok ? "Maquina desactivada. El equipo cerrara sesion." : "No encontrada"));
     }
+
+    /** Borra el registro de una maquina YA desvinculada (sin rastro en el Hub). */
+    @DeleteMapping("/maquinas/{idHardware}")
+    public ResponseEntity<?> eliminarPropia(@RequestParam String correo, @PathVariable String idHardware) {
+        boolean ok = licenciaService.eliminarMaquinaPorCorreo(correo, idHardware);
+        if (!ok) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false,
+                "mensaje", "No se pudo eliminar: primero desvincula la maquina o no existe."));
+        }
+        return ResponseEntity.ok(Map.of("ok", true, "mensaje", "Registro eliminado."));
+    }
 }

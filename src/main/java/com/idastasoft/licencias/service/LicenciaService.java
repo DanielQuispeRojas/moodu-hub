@@ -623,6 +623,28 @@ public class LicenciaService {
         return true;
     }
 
+    /**
+     * Borra el registro de una maquina YA desvinculada (inactiva). Devuelve true
+     * si existia y estaba inactiva; false si no existe o sigue activa (en ese
+     * caso hay que desvincularla primero).
+     */
+    @Transactional
+    public boolean eliminarMaquina(Long licenciaId, String idHardware) {
+        Maquina m = maquinaRepo.findByLicenciaIdAndIdHardware(licenciaId, idHardware).orElse(null);
+        if (m == null) return false;
+        if (m.isActiva()) return false; // solo se borran las ya desvinculadas
+        maquinaRepo.delete(m);
+        return true;
+    }
+
+    /** Borra el registro de una maquina YA desvinculada por correo (cliente web). */
+    @Transactional
+    public boolean eliminarMaquinaPorCorreo(String correo, String idHardware) {
+        Licencia l = licenciaRepo.findByCorreo(correo).orElse(null);
+        if (l == null) return false;
+        return eliminarMaquina(l.getId(), idHardware);
+    }
+
     public List<Maquina> maquinasDeLicencia(Long licenciaId) {
         return maquinaRepo.findByLicenciaId(licenciaId);
     }

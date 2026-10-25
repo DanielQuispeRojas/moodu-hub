@@ -646,6 +646,7 @@
                 <td>{{ m.activa ? 'Si' : 'No' }}</td>
                 <td class="text-end">
                   <button v-if="m.activa" class="btn btn-sm btn-outline-danger" @click="desactivar(m)">Desligar</button>
+                  <button v-else class="btn btn-sm btn-outline-secondary" @click="eliminarMaq(m)">Eliminar</button>
                 </td>
               </tr>
             </tbody>
@@ -2393,6 +2394,17 @@ createApp({
         { method:'POST', headers: authHeaders() })
       verDisp(licSeleccionada.value)
     }
+    async function eliminarMaq(m) {
+      if (!confirm('Borrar el registro de ' + m.idHardware + '? Ya esta desvinculada; no deja rastro en el Hub.')) return
+      const r = await fetch(API + `/api/admin/gestion/licencias/${licSeleccionada.value.id}/maquinas/${encodeURIComponent(m.idHardware)}`,
+        { method:'DELETE', headers: authHeaders() })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d?.ok === false) {
+        alert(d?.mensaje || 'No se pudo eliminar.')
+        return
+      }
+      verDisp(licSeleccionada.value)
+    }
 
     // ─── VALORACIONES ────────────────────────────
     async function cargarValoraciones() {
@@ -2480,7 +2492,7 @@ createApp({
       moduloParaAgregar, mostrarClaveManual, modulosNoSeleccionados, agregarModuloLic,
       login, nueva, nuevoP, nuevoM, nuevaV,
       hacerLogin, logout, cargar,
-      crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar,
+      crearLicencia, crearPaquete, crearModulo, crearVersion, verDisp, desactivar, eliminarMaq,
       editarLic, guardarLic, revocarLic, verLic, editarDesdeVer, terminoDe,
       modsDe, detallesDe, etiquetaPlan, etiquetaTermino, fmtFecha,
       comprapePlan, comprapeForm, comprapeMsg, comprapeOk, comprapeGuardando,

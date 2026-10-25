@@ -186,6 +186,16 @@ public class AdminGestionController {
             ok ? "Maquina desactivada. El equipo cerrara sesion en MOODU." : "Maquina no encontrada"));
     }
 
+    @DeleteMapping("/licencias/{id}/maquinas/{idHardware}")
+    public ResponseEntity<?> eliminarMaquina(@PathVariable Long id, @PathVariable String idHardware) {
+        boolean ok = licenciaService.eliminarMaquina(id, idHardware);
+        if (!ok) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false,
+                "mensaje", "No se pudo eliminar: primero desvincula la maquina o no existe."));
+        }
+        return ResponseEntity.ok(Map.of("ok", true, "mensaje", "Registro eliminado."));
+    }
+
     // ─── PAQUETES ──────────────────────────────
     @GetMapping("/paquetes")
     public ResponseEntity<?> listarPaquetes() {

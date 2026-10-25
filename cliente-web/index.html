@@ -80,7 +80,10 @@
             <td>{{ m.nombreEquipo }}</td>
             <td>{{ m.fechaRegistro }}</td>
             <td>{{ m.activa ? 'Si' : 'No' }}</td>
-            <td><button v-if="m.activa" class="btn btn-sm btn-outline-danger" @click="desligar(m)">Desligar</button></td>
+            <td>
+              <button v-if="m.activa" class="btn btn-sm btn-outline-danger" @click="desligar(m)">Desligar</button>
+              <button v-else class="btn btn-sm btn-outline-secondary" @click="eliminar(m)">Eliminar</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -134,9 +137,17 @@ createApp({
         { method:'POST' })
       cargarMis()
     }
+    async function eliminar(m) {
+      if (!confirm('Borrar el registro de ' + m.idHardware + '? Ya esta desvinculada; no deja rastro en el Hub.')) return
+      const r = await fetch(API + `/api/cliente/maquinas/${encodeURIComponent(m.idHardware)}?correo=${encodeURIComponent(sesion.value.correo)}`,
+        { method:'DELETE' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d?.ok === false) { alert(d?.mensaje || 'No se pudo eliminar.'); return }
+      cargarMis()
+    }
 
     onMounted(cargarPaquetes)
-    return { paquetes, sesion, misDatos, error, cli, reg, cargarPaquetes, cargarMis, registro, login, logout, desligar }
+    return { paquetes, sesion, misDatos, error, cli, reg, cargarPaquetes, cargarMis, registro, login, logout, desligar, eliminar }
   }
 }).mount('#app')
 </script>
