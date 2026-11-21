@@ -192,6 +192,8 @@ public class LicenciaService {
         out.put("agregado", nuevoLegacy);
         out.put("modulos", modulosHabilitados(l));
         out.put("modulosDetalle", detallesModulos(l));
+        recalcularDispositivos(l);
+        out.put("dispositivosPermitidos", dispositivosPermitidosDe(l));
         return out;
     }
 
@@ -273,6 +275,7 @@ public class LicenciaService {
             }
         }
         reemplazarTerminos(l, nuevos);
+        recalcularDispositivos(l);
     }
 
     /** Terminos que heredan la vigencia global (alta rapida / compat). */
@@ -301,6 +304,7 @@ public class LicenciaService {
             }
         }
         reemplazarTerminos(l, nuevos);
+        recalcularDispositivos(l);
     }
 
     /**
@@ -445,8 +449,40 @@ public class LicenciaService {
      * que el core y el Hub interpretan como "sin tope".
      */
     public int maquinasEfectivas(Licencia l) {
-        if (tipoDe(l).maquinasIlimitadas()) return 0;
-        return l.getMaquinasPermitidas() + packDispositivosService.dispositivosExtraDe(l);
+        return dispositivosPermitidosDe(l);
+    }
+
+    /**
+     * Dispositivos que regalan los modulos ACTIVOS de la licencia
+     * (REQ-HUBPAQ-01). Un modo PRO no suma: ya es ilimitado.
+     */
+    public int dispositivosIncluidosDe(Licencia l) {
+        if (l == null || tipoDe(l).maquinasIlimitadas()) return 0;
+        int total = 0;
+        for (String clave : modulosHabilitados(l)) {
+            ModuloCatalogo m = moduloRepo.findByClave(clave == null ? "" : clave.trim());
+            if (m != null && m.isActivo()) total += m.dispositivosIncluidosEfectivos();
+        }
+        return total;
+    }
+
+    /**
+     * Pool unico PC + movil (REQ-HUBDISP-01):
+     * {@code base (maquinasPermitidas) + dispositivos de modulos + pack vigente}.
+     * 0 = ilimitado (PRO). Se calcula siempre en vez de leer el snapshot para
+     * que un cambio de terminos/pack surta efecto sin esperar un guardado extra.
+     */
+    public int dispositivosPermitidosDe(Licencia l) {
+        if (l == null || tipoDe(l).maquinasIlimitadas()) return 0;
+        int base = Math.max(0, l.getMaquinasPermitidas());
+        return base + dispositivosIncluidosDe(l) + packDispositivosService.dispositivosExtraDe(l);
+    }
+
+    /** Actualiza el snapshot que ve el panel admin. */
+    public void recalcularDispositivos(Licencia l) {
+        if (l == null || l.getId() == null) return;
+        l.setDispositivosPermitidos(dispositivosPermitidosDe(l));
+        licenciaRepo.save(l);
     }
 
     /**
@@ -466,6 +502,11 @@ public class LicenciaService {
         res.put("maquinasPermitidas", maquinasEfectivas(l));
         res.put("maquinasBase", l.getMaquinasPermitidas());
         res.put("maquinasActivas", maquinasActivas);
+        // Pool unico PC + movil (claves nuevas; las de arriba siguen como alias legacy).
+        res.put("dispositivosPermitidos", dispositivosPermitidosDe(l));
+        res.put("dispositivosBase", Math.max(0, l.getMaquinasPermitidas()));
+        res.put("dispositivosIncluidosModulos", dispositivosIncluidosDe(l));
+        res.put("dispositivosActivos", maquinasActivas);
         res.put("expiracion", calcularExpiracion(l) != null ? calcularExpiracion(l).toString() : "INDEFINIDO");
         res.put("vigente", true);
         // Tipo de MOODU y que habilita (el core aplica las capacidades).
@@ -514,8 +555,11 @@ public class LicenciaService {
         res.put("ilimitados", tipo.maquinasIlimitadas());
         res.put("base", l.getMaquinasPermitidas());
         res.put("extra", packDispositivosService.dispositivosExtraDe(l));
+        res.put("incluidosModulos", dispositivosIncluidosDe(l));
         res.put("total", maquinasEfectivas(l)); // 0 = ilimitado (PRO)
         res.put("activos", activas);
+        res.put("dispositivosPermitidos", maquinasEfectivas(l));
+        res.put("dispositivosActivos", activas);
         res.put("codigoPack", lp == null ? null : lp.getCodigo());
         res.put("plan", lp == null ? null : lp.getPlan());
         res.put("vigenteHasta", lp == null || lp.getVigenciaHasta() == null
@@ -581,6 +625,7 @@ public class LicenciaService {
         lp.setActivo(true);
         lp.setFechaCompra(LocalDateTime.now());
         licenciaPackRepo.save(lp);
+        recalcularDispositivos(l);
         return estadoDispositivos(correo, clave);
     }
 
@@ -608,6 +653,7 @@ public class LicenciaService {
             return licenciaPackRepo.findByLicencia(l).map(lp -> {
                 lp.setActivo(false);
                 licenciaPackRepo.save(lp);
+                recalcularDispositivos(l);
                 return true;
             }).orElse(false);
         }).orElse(false);

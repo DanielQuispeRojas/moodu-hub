@@ -29,6 +29,14 @@ public class ParametroService {
     public static final String HUB_URL = "HUB_URL";
     /** URL de la tienda Comprape (vacia = el desktop usa su override local). */
     public static final String COMPRAPE_URL = "COMPRAPE_URL";
+    /**
+     * Factor del precio ANUAL: {@code anual = mensual × factor} (REQ-HUBPAQ-01).
+     * Lo ingresa el admin; default 10 (el modelo documentado de 10 mensualidades).
+     */
+    public static final String ANUAL_FACTOR = "ANUAL_FACTOR";
+    public static final int ANUAL_FACTOR_DEFAULT = 10;
+    public static final int ANUAL_FACTOR_MIN = 1;
+    public static final int ANUAL_FACTOR_MAX = 24;
 
     private final HubParametroRepo repo;
 
@@ -61,6 +69,38 @@ public class ParametroService {
         p.setValor(valor == null || valor.isBlank() ? null : valor.trim());
         p.setActualizadoPor(usuario);
         repo.save(p);
+    }
+
+    /**
+     * Factor anual vigente. Un valor corrupto cae al default: es un parametro
+     * de visualizacion/precio, nunca debe tumbar el arranque del Hub.
+     */
+    @Transactional(readOnly = true)
+    public int factorAnual() {
+        String v = get(ANUAL_FACTOR, String.valueOf(ANUAL_FACTOR_DEFAULT));
+        try {
+            int f = Integer.parseInt(v.trim());
+            return f >= ANUAL_FACTOR_MIN && f <= ANUAL_FACTOR_MAX ? f : ANUAL_FACTOR_DEFAULT;
+        } catch (RuntimeException e) {
+            return ANUAL_FACTOR_DEFAULT;
+        }
+    }
+
+    /** Guarda el factor con validacion estricta (400 con motivo desde el panel). */
+    @Transactional
+    public int guardarFactorAnual(Object valor, String usuario) {
+        int f;
+        try {
+            f = Integer.parseInt(String.valueOf(valor).trim());
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("El factor anual debe ser un numero entero.");
+        }
+        if (f < ANUAL_FACTOR_MIN || f > ANUAL_FACTOR_MAX) {
+            throw new IllegalArgumentException("El factor anual debe estar entre "
+                    + ANUAL_FACTOR_MIN + " y " + ANUAL_FACTOR_MAX + ".");
+        }
+        set(ANUAL_FACTOR, String.valueOf(f), usuario);
+        return f;
     }
 
     /** Guarda varias claves de una vez (el panel admin manda el mapa). */

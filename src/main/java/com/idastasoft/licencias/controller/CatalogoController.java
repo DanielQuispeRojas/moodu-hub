@@ -83,6 +83,11 @@ public class CatalogoController {
         out.put("origen", m.getOrigen().name());
         out.put("tipo", m.getTipo().name());
         out.put("precio", m.getPrecio());
+        out.put("dispositivosIncluidos", m.dispositivosIncluidosEfectivos());
+        boolean oferta = m.descuentoVigente(java.time.LocalDate.now());
+        out.put("descuentoPct", m.getDescuentoPct() == null ? 0 : m.getDescuentoPct());
+        out.put("descuentoVigente", oferta);
+        out.put("precioFinal", m.precioConDescuento(m.getPrecio(), java.time.LocalDate.now()));
         out.put("linkDescarga", m.getLinkDescarga());
         out.put("linkRepositorio", m.getLinkRepositorio());
         out.put("vigenciaDias", m.getVigenciaDias());

@@ -122,8 +122,10 @@ public class AdminDispositivosController {
             m.put("capacidades", tipo.capacidades());
             m.put("ilimitados", tipo.maquinasIlimitadas());
             m.put("base", l.getMaquinasPermitidas());
+            m.put("incluidosModulos", licenciaService.dispositivosIncluidosDe(l));
             m.put("extra", packService.dispositivosExtraDe(l));
             m.put("total", licenciaService.maquinasEfectivas(l));
+            m.put("dispositivosPermitidos", licenciaService.dispositivosPermitidosDe(l));
             m.put("codigoPack", pack == null ? null : pack.getCodigo());
             m.put("planPack", pack == null ? null : pack.getPlan());
             m.put("packVigente", pack != null && pack.vigente());
@@ -164,7 +166,9 @@ public class AdminDispositivosController {
         res.put("ok", true);
         res.put("tipoMoodu", licenciaService.tipoDe(l).name());
         res.put("base", l.getMaquinasPermitidas());
+        res.put("incluidosModulos", licenciaService.dispositivosIncluidosDe(l));
         res.put("total", licenciaService.maquinasEfectivas(l));
+        res.put("dispositivosPermitidos", licenciaService.dispositivosPermitidosDe(l));
         res.put("pack", packService.packDe(l));
         return ResponseEntity.ok(res);
     }

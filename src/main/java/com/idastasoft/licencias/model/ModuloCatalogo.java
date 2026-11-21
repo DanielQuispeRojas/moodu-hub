@@ -76,6 +76,25 @@ public class ModuloCatalogo {
     @Column(nullable = false)
     private BigDecimal precio = BigDecimal.ZERO;
 
+    /**
+     * Dispositivos que regala la adquisicion de este modulo (REQ-HUBPAQ-01).
+     * Nullable por compatibilidad con BDs existentes: se lee como 0.
+     */
+    @Column(nullable = true)
+    private Integer dispositivosIncluidos = 0;
+
+    /** Descuento de temporada en % (null = sin oferta). 1..70. */
+    @Column(nullable = true)
+    private Integer descuentoPct;
+
+    /** Inicio de la vigencia del descuento (null = desde siempre). */
+    @Column(nullable = true)
+    private LocalDate descuentoInicio;
+
+    /** Fin de la vigencia del descuento (null = sin fin). */
+    @Column(nullable = true)
+    private LocalDate descuentoFin;
+
     /** Link de descarga/instalacion. Oficial -> instalador MOODU; tercero -> repo. */
     @Column(length = 1000)
     private String linkDescarga;
@@ -122,6 +141,34 @@ public class ModuloCatalogo {
     public void setTipo(TipoLicencia tipo) { this.tipo = tipo; }
     public BigDecimal getPrecio() { return precio; }
     public void setPrecio(BigDecimal precio) { this.precio = precio; }
+    public Integer getDispositivosIncluidos() { return dispositivosIncluidos; }
+    public void setDispositivosIncluidos(Integer dispositivosIncluidos) { this.dispositivosIncluidos = dispositivosIncluidos; }
+    public Integer getDescuentoPct() { return descuentoPct; }
+    public void setDescuentoPct(Integer descuentoPct) { this.descuentoPct = descuentoPct; }
+    public LocalDate getDescuentoInicio() { return descuentoInicio; }
+    public void setDescuentoInicio(LocalDate descuentoInicio) { this.descuentoInicio = descuentoInicio; }
+    public LocalDate getDescuentoFin() { return descuentoFin; }
+    public void setDescuentoFin(LocalDate descuentoFin) { this.descuentoFin = descuentoFin; }
+
+    /** Dispositivos incluidos nunca negativos (legacy null = 0). */
+    public int dispositivosIncluidosEfectivos() {
+        return dispositivosIncluidos == null ? 0 : Math.max(0, dispositivosIncluidos);
+    }
+
+    /** El descuento solo aplica dentro de su rango de fechas (hoy inclusive). */
+    public boolean descuentoVigente(LocalDate hoy) {
+        if (descuentoPct == null || descuentoPct <= 0 || hoy == null) return false;
+        return (descuentoInicio == null || !hoy.isBefore(descuentoInicio))
+                && (descuentoFin == null || !hoy.isAfter(descuentoFin));
+    }
+
+    /** Precio con el descuento de temporada ya aplicado (2 decimales HALF_UP). */
+    public BigDecimal precioConDescuento(BigDecimal base, LocalDate hoy) {
+        BigDecimal b = base == null ? BigDecimal.ZERO : base;
+        if (!descuentoVigente(hoy)) return b;
+        return b.multiply(BigDecimal.valueOf(100 - descuentoPct))
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+    }
     public String getLinkDescarga() { return linkDescarga; }
     public void setLinkDescarga(String linkDescarga) { this.linkDescarga = linkDescarga; }
     public String getLinkRepositorio() { return linkRepositorio; }

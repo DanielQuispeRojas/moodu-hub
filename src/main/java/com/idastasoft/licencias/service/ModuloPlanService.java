@@ -25,9 +25,11 @@ import java.util.Map;
 public class ModuloPlanService {
 
     private final ModuloPlanRepo repo;
+    private final ParametroService parametros;
 
-    public ModuloPlanService(ModuloPlanRepo repo) {
+    public ModuloPlanService(ModuloPlanRepo repo, ParametroService parametros) {
         this.repo = repo;
+        this.parametros = parametros;
     }
 
     /**
@@ -39,24 +41,35 @@ public class ModuloPlanService {
         if (!filas.isEmpty()) {
             List<Map<String, Object>> out = new ArrayList<>();
             for (ModuloPlan p : filas) {
-                if (p.isActivo()) out.add(publico(p));
+                if (p.isActivo()) out.add(publico(p, m));
             }
             return out;
         }
         return sintetizarLegacy(m);
     }
 
-    private Map<String, Object> publico(ModuloPlan p) {
+    /**
+     * Mapa que consume la Tienda. El descuento de temporada se calcula aqui
+     * (nunca se reescribe el precio guardado): asi una oferta se activa/caduca
+     * por fecha sin tocar la BD.
+     */
+    private Map<String, Object> publico(ModuloPlan p, ModuloCatalogo modulo) {
         Map<String, Object> o = new LinkedHashMap<>();
+        BigDecimal listo = p.getPrecio() == null ? BigDecimal.ZERO : p.getPrecio();
+        boolean oferta = modulo != null && modulo.descuentoVigente(java.time.LocalDate.now());
+        BigDecimal finalPrecio = modulo == null ? listo : modulo.precioConDescuento(listo, java.time.LocalDate.now());
         o.put("id", p.getId());
         o.put("tipo", p.getTipo().name());
-        o.put("precio", p.getPrecio());
+        o.put("precio", finalPrecio);
+        o.put("precioLista", listo);
+        o.put("descuentoPct", modulo == null || modulo.getDescuentoPct() == null ? 0 : modulo.getDescuentoPct());
+        o.put("descuentoVigente", oferta);
+        o.put("dispositivosIncluidos", modulo == null ? 0 : modulo.dispositivosIncluidosEfectivos());
         o.put("periodos", p.getPeriodos());
         o.put("vigenciaDias", p.vigenciaDias());
         o.put("vigente", p.isActivo());
         o.put("etiqueta", etiqueta(p.getTipo(), p.getPeriodos()));
-        o.put("gratuito", p.getPrecio() != null
-                && p.getPrecio().compareTo(BigDecimal.ZERO) == 0
+        o.put("gratuito", listo.compareTo(BigDecimal.ZERO) == 0
                 && p.getTipo() != ModuloPlan.TipoPlan.PERMANENTE);
         return o;
     }
@@ -96,7 +109,12 @@ public class ModuloPlanService {
                 o.put("vigenciaDias", meses * 30);
                 o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.MENSUAL, meses));
             }
-            o.put("precio", m.getPrecio() != null ? m.getPrecio() : BigDecimal.ZERO);
+            BigDecimal listo = m.getPrecio() != null ? m.getPrecio() : BigDecimal.ZERO;
+            o.put("precio", m.precioConDescuento(listo, java.time.LocalDate.now()));
+            o.put("precioLista", listo);
+            o.put("descuentoPct", m.getDescuentoPct() == null ? 0 : m.getDescuentoPct());
+            o.put("descuentoVigente", m.descuentoVigente(java.time.LocalDate.now()));
+            o.put("dispositivosIncluidos", m.dispositivosIncluidosEfectivos());
             o.put("gratuito", false);
         }
         out.add(o);
@@ -116,7 +134,7 @@ public class ModuloPlanService {
 
     @Transactional
     public List<Map<String, Object>> listarAdmin(ModuloCatalogo m) {
-        return repo.findByModuloIdOrderByOrdenAscIdAsc(m.getId()).stream().map(this::publico).toList();
+        return repo.findByModuloIdOrderByOrdenAscIdAsc(m.getId()).stream().map(p -> publico(p, m)).toList();
     }
 
     /**
@@ -155,6 +173,20 @@ public class ModuloPlanService {
         BigDecimal precio = precioDe(body.get("precio"));
 
         List<ModuloPlan> delModulo = repo.findByModuloIdOrderByOrdenAscIdAsc(modulo.getId());
+
+        // El precio ANUAL no se escribe a mano (REQ-HUBPAQ-01): se deriva del
+        // MENSUAL con el factor que configuro el admin. Si no hay mensual, se
+        // rechaza con motivo claro en vez de guardar un precio inventado.
+        if (tipo == ModuloPlan.TipoPlan.ANUAL) {
+            ModuloPlan mensual = delModulo.stream()
+                    .filter(x -> x.getTipo() == ModuloPlan.TipoPlan.MENSUAL).findFirst().orElse(null);
+            if (mensual == null || mensual.getPrecio() == null) {
+                throw new IllegalArgumentException(
+                        "Fije primero el precio MENSUAL del modulo: el precio ANUAL se calcula solo.");
+            }
+            precio = anualDe(mensual.getPrecio());
+        }
+
         ModuloPlan p = delModulo.stream().filter(x -> x.getTipo() == tipo).findFirst().orElse(null);
         if (p == null) {
             p = new ModuloPlan();
@@ -165,7 +197,36 @@ public class ModuloPlanService {
         p.setPeriodos(tipo == ModuloPlan.TipoPlan.PERMANENTE ? 1 : Math.max(1, periodos));
         p.setPrecio(precio);
         p.setActivo(!Boolean.FALSE.equals(body.get("activo")));
-        return publico(repo.save(p));
+        ModuloPlan guardado = repo.save(p);
+
+        // Guardar el MENSUAL genera/actualiza el ANUAL en la misma transaccion.
+        if (tipo == ModuloPlan.TipoPlan.MENSUAL) {
+            sincronizarAnual(modulo, delModulo, precio, p.isActivo());
+        }
+        return publico(guardado, modulo);
+    }
+
+    /** anual = mensual × factor, 2 decimales HALF_UP. */
+    private BigDecimal anualDe(BigDecimal mensual) {
+        return mensual.multiply(BigDecimal.valueOf(parametros.factorAnual()))
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** Upsert del plan ANUAL derivado; nunca llama a guardar() (evita recursion). */
+    private void sincronizarAnual(ModuloCatalogo modulo, List<ModuloPlan> delModulo,
+                                  BigDecimal mensual, boolean activo) {
+        ModuloPlan anual = delModulo.stream()
+                .filter(x -> x.getTipo() == ModuloPlan.TipoPlan.ANUAL).findFirst().orElse(null);
+        if (anual == null) {
+            anual = new ModuloPlan();
+            anual.setModulo(modulo);
+            anual.setOrden(delModulo.size() + 1);
+        }
+        anual.setTipo(ModuloPlan.TipoPlan.ANUAL);
+        anual.setPeriodos(1);
+        anual.setPrecio(anualDe(mensual));
+        anual.setActivo(activo);
+        repo.save(anual);
     }
 
     @Transactional

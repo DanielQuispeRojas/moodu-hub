@@ -44,8 +44,17 @@ public class Licencia {
     @OneToMany(mappedBy = "licencia", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LicenciaModulo> detalles = new ArrayList<>();
 
+    /** Dispositivos base del CORE (1 por licencia nueva; las legacy conservan su valor). */
     @Column(nullable = false)
-    private int maquinasPermitidas = 3;
+    private int maquinasPermitidas = 1;
+
+    /**
+     * Cupo del pool unico PC + movil (REQ-HUBDISP-01). Es un SNAPSHOT del
+     * calculo {@code base + dispositivos de modulos + pack}; nullable para
+     * licencias legacy (null = usar {@link #maquinasPermitidas}).
+     */
+    @Column(nullable = true)
+    private Integer dispositivosPermitidos;
 
     // Vigencia: DIAS, MESES, ANIO, INDEFINIDO
     @Enumerated(EnumType.STRING)
@@ -80,6 +89,8 @@ public class Licencia {
     public void setDetalles(List<LicenciaModulo> detalles) { this.detalles = detalles; }
     public int getMaquinasPermitidas() { return maquinasPermitidas; }
     public void setMaquinasPermitidas(int maquinasPermitidas) { this.maquinasPermitidas = maquinasPermitidas; }
+    public Integer getDispositivosPermitidos() { return dispositivosPermitidos; }
+    public void setDispositivosPermitidos(Integer dispositivosPermitidos) { this.dispositivosPermitidos = dispositivosPermitidos; }
     public UnidadVigencia getVigenciaUnidad() { return vigenciaUnidad; }
     public void setVigenciaUnidad(UnidadVigencia vigenciaUnidad) { this.vigenciaUnidad = vigenciaUnidad; }
     public int getVigenciaValor() { return vigenciaValor; }

@@ -83,15 +83,17 @@ public class ClienteController {
             return ResponseEntity.ok(Map.of("licencia", null, "maquinas", List.of()));
         }
         List<Maquina> maquinas = maquinaRepo.findByLicenciaCorreo(correo);
-        return ResponseEntity.ok(Map.of(
-            "licencia", Map.of(
-                "correo", l.getCorreo(),
-                "modulos", l.getModulos(),
-                "maquinasPermitidas", l.getMaquinasPermitidas(),
-                "vigente", licenciaService.estaVigente(l)
-            ),
-            "maquinas", maquinas
-        ));
+        Map<String, Object> lic = new java.util.LinkedHashMap<>();
+        lic.put("correo", l.getCorreo());
+        lic.put("modulos", l.getModulos());
+        lic.put("maquinasPermitidas", l.getMaquinasPermitidas()); // alias legacy
+        lic.put("dispositivosPermitidos", licenciaService.dispositivosPermitidosDe(l));
+        lic.put("dispositivosActivos", maquinaRepo.countByLicenciaIdAndActivaTrue(l.getId()));
+        lic.put("vigente", licenciaService.estaVigente(l));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("licencia", lic);
+        out.put("maquinas", maquinas);
+        return ResponseEntity.ok(out);
     }
 
     /** Cliente desliga una maquina de su licencia. */

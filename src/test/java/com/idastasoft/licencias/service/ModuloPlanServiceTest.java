@@ -36,11 +36,19 @@ class ModuloPlanServiceTest {
     @Mock
     private ModuloPlanRepo repo;
 
+    @Mock
+    private com.idastasoft.licencias.repository.HubParametroRepo parametroRepo;
+
     private ModuloPlanService service;
 
     @BeforeEach
     void setUp() {
-        service = new ModuloPlanService(repo);
+        // ParametroService es una clase concreta: se instancia real con un repo
+        // mockeado (Mockito inline no puede mockearla en este JDK).
+        when(parametroRepo.findByClaveIgnoreCase(any())).thenReturn(java.util.Optional.empty());
+        ParametroService parametros = new ParametroService(parametroRepo);
+        when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
+        service = new ModuloPlanService(repo, parametros);
     }
 
     private ModuloCatalogo modulo(String clave, ModuloCatalogo.TipoLicencia tipo,
@@ -57,6 +65,15 @@ class ModuloPlanServiceTest {
 
     private void sinPlanesPropios() {
         when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of());
+    }
+
+    private ModuloPlan mensual(String precio) {
+        ModuloPlan p = new ModuloPlan();
+        p.setId(7L);
+        p.setTipo(ModuloPlan.TipoPlan.MENSUAL);
+        p.setPrecio(new BigDecimal(precio));
+        p.setPeriodos(1);
+        return p;
     }
 
     // ─── Sintesis desde los campos legacy ─────────────────────────
@@ -226,7 +243,7 @@ class ModuloPlanServiceTest {
     @Test
     @DisplayName("moodu_pro admite MENSUAL y ANUAL, pero no PERMANENTE")
     void proNoAdmitePermanente() {
-        when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of());
+        when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of(mensual("299")));
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
         for (String tipo : new String[]{"MENSUAL", "ANUAL"}) {
@@ -242,7 +259,7 @@ class ModuloPlanServiceTest {
     @Test
     @DisplayName("un modulo normal NO se restringe (puede ser permanente, mensual o anual)")
     void moduloNormalSinRestriccion() {
-        when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of());
+        when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of(mensual("3500")));
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
         for (String tipo : new String[]{"PERMANENTE", "MENSUAL", "ANUAL"}) {
@@ -250,5 +267,50 @@ class ModuloPlanServiceTest {
                     Map.of("tipo", tipo, "precio", "3500"));
             assertEquals(tipo, ok.get("tipo"));
         }
+    }
+
+    // ─── SP-1 (REQ-HUBPAQ-01) ─────────────────────────────────────
+
+    @Test
+    @DisplayName("guardar MENSUAL genera el ANUAL = mensual × factor del admin")
+    void mensualGeneraAnual() {
+        sinPlanesPropios();
+        service.guardar(modulo("recepcion", ModuloCatalogo.TipoLicencia.PAGA,
+                new BigDecimal("3500"), 0), Map.of("tipo", "MENSUAL", "precio", "79"));
+        org.mockito.ArgumentCaptor<ModuloPlan> cap = org.mockito.ArgumentCaptor.forClass(ModuloPlan.class);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(cap.capture());
+        ModuloPlan anual = cap.getAllValues().stream()
+                .filter(p -> p.getTipo() == ModuloPlan.TipoPlan.ANUAL).findFirst().orElseThrow();
+        assertEquals(0, new BigDecimal("790.00").compareTo(anual.getPrecio()));
+    }
+
+    @Test
+    @DisplayName("ANUAL sin MENSUAL se rechaza con motivo (no se inventa precio)")
+    void anualSinMensualSeRechaza() {
+        sinPlanesPropios();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () ->
+                service.guardar(modulo("caja", ModuloCatalogo.TipoLicencia.PAGA,
+                        new BigDecimal("1500"), 30), Map.of("tipo", "ANUAL", "precio", "1")));
+        assertTrue(e.getMessage().contains("MENSUAL"));
+    }
+
+    @Test
+    @DisplayName("descuento vigente se aplica al precio publico; fuera de rango no")
+    void descuentoDeTemporada() {
+        sinPlanesPropios();
+        ModuloCatalogo m = modulo("caja", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("1500"), 30);
+        m.setDescuentoPct(20);
+        m.setDescuentoInicio(java.time.LocalDate.now().minusDays(1));
+        m.setDescuentoFin(java.time.LocalDate.now().plusDays(1));
+        Map<String, Object> oferta = service.planesPublicos(1L, m).get(0);
+        assertEquals(0, new BigDecimal("1200.00").compareTo((BigDecimal) oferta.get("precio")));
+        assertEquals(Boolean.TRUE, oferta.get("descuentoVigente"));
+        assertEquals(0, new BigDecimal("1500.00").compareTo((BigDecimal) oferta.get("precioLista")));
+
+        m.setDescuentoInicio(java.time.LocalDate.now().plusDays(5));
+        m.setDescuentoFin(java.time.LocalDate.now().plusDays(10));
+        Map<String, Object> sinOferta = service.planesPublicos(1L, m).get(0);
+        assertEquals(Boolean.FALSE, sinOferta.get("descuentoVigente"));
+        assertEquals(0, new BigDecimal("1500.00").compareTo((BigDecimal) sinOferta.get("precio")));
     }
 }

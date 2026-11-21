@@ -127,7 +127,7 @@ public class AdminGestionController {
         String clave = (String) body.get("claveActivacion");
         l.setClaveActivacion(clave != null && !clave.isBlank() ? clave
             : UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        l.setMaquinasPermitidas(Integer.parseInt(String.valueOf(body.getOrDefault("maquinasPermitidas", 3))));
+        l.setMaquinasPermitidas(Integer.parseInt(String.valueOf(body.getOrDefault("maquinasPermitidas", 1))));
         l.setVigenciaUnidad(Licencia.UnidadVigencia.valueOf(
             ((String) body.getOrDefault("vigenciaUnidad", "MESES")).toUpperCase()));
         l.setVigenciaValor(Integer.parseInt(String.valueOf(body.getOrDefault("vigenciaValor", 12))));
@@ -141,6 +141,7 @@ public class AdminGestionController {
         } else {
             licenciaService.heredarTerminos(guardada, (List<String>) body.getOrDefault("modulos", List.of()));
         }
+        licenciaService.recalcularDispositivos(guardada);
         return ResponseEntity.ok(licenciaRepo.findById(guardada.getId()).orElse(guardada));
     }
 
@@ -164,6 +165,7 @@ public class AdminGestionController {
         } else if (body.containsKey("modulos")) {
             licenciaService.heredarTerminos(l, (List<String>) body.get("modulos"));
         }
+        licenciaService.recalcularDispositivos(l);
         return ResponseEntity.ok(licenciaRepo.findById(id).orElse(l));
     }
 
@@ -244,16 +246,25 @@ public class AdminGestionController {
 
     @PostMapping("/catalogo/modulos")
     public ResponseEntity<?> crearModuloCatalogo(@RequestBody Map<String, Object> body) {
-        ModuloCatalogo m = new ModuloCatalogo();
-        aplicarCamposModulo(m, body);
-        return ResponseEntity.ok(moduloRepo.save(m));
+        try {
+            ModuloCatalogo m = new ModuloCatalogo();
+            aplicarCamposModulo(m, body);
+            return ResponseEntity.ok(moduloRepo.save(m));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     @PutMapping("/catalogo/modulos/{id}")
     public ResponseEntity<?> actualizarModuloCatalogo(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        ModuloCatalogo m = moduloRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
-        aplicarCamposModulo(m, body);
-        return ResponseEntity.ok(moduloRepo.save(m));
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        try {
+            aplicarCamposModulo(m, body);
+            return ResponseEntity.ok(moduloRepo.save(m));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     @DeleteMapping("/catalogo/modulos/{id}")
@@ -312,6 +323,28 @@ public class AdminGestionController {
         out.put("mensaje", "Parametros guardados.");
         out.put("parametros", parametroService.mapa());
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Factor del precio ANUAL (REQ-HUBPAQ-01). El admin pone el numero y el
+     * sistema calcula {@code anual = mensual × factor}; el anual nunca se
+     * escribe a mano en el plan.
+     */
+    @GetMapping("/config/anual-factor")
+    public ResponseEntity<?> verFactorAnual() {
+        return ResponseEntity.ok(Map.of("ok", true, "factor", parametroService.factorAnual(),
+                "min", ParametroService.ANUAL_FACTOR_MIN, "max", ParametroService.ANUAL_FACTOR_MAX));
+    }
+
+    @PutMapping("/config/anual-factor")
+    public ResponseEntity<?> guardarFactorAnual(@RequestBody Map<String, Object> body) {
+        try {
+            int factor = parametroService.guardarFactorAnual(body.get("factor"), "admin");
+            return ResponseEntity.ok(Map.of("ok", true, "factor", factor,
+                    "mensaje", "Factor anual guardado. Los planes ANUAL ya existentes no se reescriben."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -453,6 +486,35 @@ public class AdminGestionController {
         if (body.containsKey("linkRepositorio")) m.setLinkRepositorio((String) body.get("linkRepositorio"));
         if (body.containsKey("vigenciaDias")) m.setVigenciaDias(Integer.parseInt(String.valueOf(body.getOrDefault("vigenciaDias", 0))));
         if (body.containsKey("activo")) m.setActivo(Boolean.parseBoolean(String.valueOf(body.get("activo"))));
+
+        // REQ-HUBPAQ-01: dispositivos incluidos y descuento de temporada.
+        if (body.containsKey("dispositivosIncluidos")) {
+            int d = body.get("dispositivosIncluidos") == null ? 0
+                    : Integer.parseInt(String.valueOf(body.get("dispositivosIncluidos")).trim());
+            if (d < 0 || d > 1000)
+                throw new IllegalArgumentException("Dispositivos incluidos debe estar entre 0 y 1000.");
+            if (d > 0 && m.getTipo() == ModuloCatalogo.TipoLicencia.GRATIS)
+                throw new IllegalArgumentException("Un modulo GRATIS no puede regalar dispositivos.");
+            m.setDispositivosIncluidos(d);
+        }
+        if (body.containsKey("descuentoPct")) {
+            Integer pct = body.get("descuentoPct") == null ? null
+                    : Integer.valueOf(String.valueOf(body.get("descuentoPct")).trim());
+            if (pct != null && (pct < 0 || pct > 70))
+                throw new IllegalArgumentException("El descuento debe estar entre 0 y 70 %.");
+            m.setDescuentoPct(pct == null || pct == 0 ? null : pct);
+        }
+        if (body.containsKey("descuentoInicio")) {
+            String s = body.get("descuentoInicio") == null ? null : String.valueOf(body.get("descuentoInicio")).trim();
+            m.setDescuentoInicio(s == null || s.isEmpty() ? null : java.time.LocalDate.parse(s));
+        }
+        if (body.containsKey("descuentoFin")) {
+            String s = body.get("descuentoFin") == null ? null : String.valueOf(body.get("descuentoFin")).trim();
+            m.setDescuentoFin(s == null || s.isEmpty() ? null : java.time.LocalDate.parse(s));
+        }
+        if (m.getDescuentoInicio() != null && m.getDescuentoFin() != null
+                && m.getDescuentoFin().isBefore(m.getDescuentoInicio()))
+            throw new IllegalArgumentException("La fecha fin del descuento no puede ser anterior al inicio.");
     }
 
     // ─── VERSIONES DEL SISTEMA (instalador MOODU) ─────────
