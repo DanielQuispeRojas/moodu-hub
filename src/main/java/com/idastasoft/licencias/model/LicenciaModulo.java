@@ -27,19 +27,20 @@ public class LicenciaModulo {
     @Column(name = "modulo_clave", nullable = false, length = 100)
     private String moduloClave;
 
-    /** PERMANENTE (sin vencimiento), MENSUAL o ANUAL (periodos desde el inicio). */
+    /** MENSUAL, ANUAL o TRIENAL. PERMANENTE = legado / modulos GRATIS. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private PlanModulo plan = PlanModulo.MENSUAL;
 
-    /** Cantidad de periodos del plan (MENSUAL/ANUAL). 1 = un mes / un anio. */
+    /** Cantidad de periodos del plan (MENSUAL/ANUAL). TRIENAL siempre usa 1. */
     @Column(nullable = false)
     private int periodos = 1;
 
     @Column(nullable = false)
     private LocalDateTime fechaInicio = LocalDateTime.now();
 
-    public enum PlanModulo { PERMANENTE, MENSUAL, ANUAL }
+    /** HUB-11: TRIENAL sustituye a PERMANENTE en planes de pago. */
+    public enum PlanModulo { PERMANENTE, MENSUAL, ANUAL, TRIENAL }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

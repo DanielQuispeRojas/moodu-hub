@@ -135,13 +135,14 @@ public enum TipoMoodu {
 
     /**
      * Periodicidades admitidas para el plan de este tipo en el catalogo.
-     * PLUS es PERMANENTE; PRO es solo MENSUAL o ANUAL (no permanente).
-     * El Hub lo valida al guardar el plan del modulo.
+     * HUB-11: PLUS pasa de PERMANENTE a TRIENAL (se conserva PERMANENTE solo
+     * para leer planes legacy ya guardados); PRO sigue siendo solo MENSUAL o
+     * ANUAL (suscripcion, no plazo cerrado). El Hub lo valida al guardar.
      */
     public Set<String> periodicidadesPermitidas() {
         return switch (this) {
             case GRATIS -> Set.of("GRATUITO");
-            case PLUS -> Set.of("PERMANENTE");
+            case PLUS -> Set.of("TRIENAL", "PERMANENTE");
             case PRO -> Set.of("MENSUAL", "ANUAL");
         };
     }

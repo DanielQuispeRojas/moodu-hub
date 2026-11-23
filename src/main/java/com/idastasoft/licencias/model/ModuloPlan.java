@@ -15,7 +15,10 @@ import java.math.BigDecimal;
  * desde los campos legacy ({@code tipo}/{@code precio}/{@code vigenciaDias})
  * para que los modulos ya cargados sigan funcionando sin migracion.</p>
  *
- * <p>PERMANENTE no lleva caducidad (vigenciaDias 0).</p>
+ * <p>HUB-11: ya no se ofrece PERMANENTE para planes de pago. El plazo largo es
+ * {@code TRIENAL} (tipo propio, precio propio) y su duracion se deriva del
+ * parametro {@code MAX_ANIOS_LICENCIA} del Hub. PERMANENTE se conserva SOLO
+ * como valor legible de BDs viejas y para modulos GRATIS (sin vencimiento).</p>
  */
 @Entity
 @Table(name = "modulo_plan")
@@ -30,7 +33,7 @@ public class ModuloPlan {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private ModuloCatalogo modulo;
 
-    /** MENSUAL | ANUAL | PERMANENTE. */
+    /** MENSUAL | ANUAL | TRIENAL (PERMANENTE = legado / modulos GRATIS). */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TipoPlan tipo = TipoPlan.MENSUAL;
@@ -39,7 +42,7 @@ public class ModuloPlan {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal precio = BigDecimal.ZERO;
 
-    /** Periodos que cubre (1 = 1 mes / 1 anio). Solo para MENSUAL/ANUAL. */
+    /** Periodos que cubre (1 = 1 mes / 1 anio). TRIENAL siempre usa 1. */
     @Column(nullable = false)
     private int periodos = 1;
 
@@ -50,17 +53,28 @@ public class ModuloPlan {
     @Column(nullable = false)
     private boolean activo = true;
 
-    public enum TipoPlan { MENSUAL, ANUAL, PERMANENTE }
+    public enum TipoPlan { MENSUAL, ANUAL, TRIENAL, PERMANENTE }
 
     /**
-     * Vigencia en dias derivada del tipo y los periodos.
-     * PERMANENTE = 0 (no caduca). Se guarda en el mapa que ve la Tienda,
-     * no en la entidad: asi cambiar un periodo recalcula solo.
+     * Vigencia en dias con el tope vigente del Hub (HUB-11). Se calcula, no se
+     * guarda: asi cambiar el parametro recalcula la Tienda sin migracion.
+     * PERMANENTE = 0 (sin vencimiento, solo GRATIS/legado).
+     */
+    public int vigenciaDias(int maxAnios) {
+        if (tipo == TipoPlan.PERMANENTE) return 0;
+        int tope = Math.max(1, maxAnios);
+        if (tipo == TipoPlan.TRIENAL) return tope * 365;
+        int p = Math.max(1, periodos);
+        if (tipo == TipoPlan.ANUAL) return p * 365;
+        return Math.min(p, tope * 12) * 30;
+    }
+
+    /**
+     * Fallback para callers sin acceso al parametro (tests/legacy). En runtime
+     * la Tienda siempre usa {@link #vigenciaDias(int)} con el valor del Hub.
      */
     public int vigenciaDias() {
-        if (tipo == TipoPlan.PERMANENTE) return 0;
-        int p = Math.max(1, periodos);
-        return tipo == TipoPlan.ANUAL ? p * 365 : p * 30;
+        return vigenciaDias(3);
     }
 
     public Long getId() { return id; }

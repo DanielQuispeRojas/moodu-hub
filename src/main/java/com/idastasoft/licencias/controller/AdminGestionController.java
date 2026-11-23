@@ -118,8 +118,16 @@ public class AdminGestionController {
     }
 
     @PostMapping("/licencias")
-    @Transactional
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public ResponseEntity<?> crearLicencia(@RequestBody Map<String, Object> body) {
+        try {
+            return crearLicenciaInterno(body);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
+    }
+
+    private ResponseEntity<?> crearLicenciaInterno(Map<String, Object> body) {
         Licencia l = new Licencia();
         l.setNombre((String) body.getOrDefault("nombre", ""));
         l.setApellido((String) body.getOrDefault("apellido", ""));
@@ -146,8 +154,16 @@ public class AdminGestionController {
     }
 
     @PutMapping("/licencias/{id}")
-    @Transactional
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public ResponseEntity<?> actualizarLicencia(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            return actualizarLicenciaInterno(id, body);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
+    }
+
+    private ResponseEntity<?> actualizarLicenciaInterno(Long id, Map<String, Object> body) {
         Licencia l = licenciaRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrada"));
         if (body.containsKey("nombre")) l.setNombre((String) body.get("nombre"));
         if (body.containsKey("apellido")) l.setApellido((String) body.get("apellido"));
@@ -317,7 +333,11 @@ public class AdminGestionController {
     public ResponseEntity<?> guardarParametros(@RequestBody Map<String, Object> body) {
         Object datos = body.get("parametros");
         Map<String, Object> mapa = datos instanceof Map ? castMapa(datos) : body;
-        parametroService.guardarVarios(mapa, "admin");
+        try {
+            parametroService.guardarVarios(mapa, "admin");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("mensaje", "Parametros guardados.");

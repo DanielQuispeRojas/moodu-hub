@@ -226,12 +226,13 @@
                   <div class="col-4">
                     <label class="form-label small mb-0">Plan</label>
                     <select v-model="terminoDe(op.clave).plan" class="form-select form-select-sm">
-                      <option value="PERMANENTE">Permanente</option>
                       <option value="MENSUAL">Mensual</option>
                       <option value="ANUAL">Anual</option>
+                      <option value="TRIENAL">Plan de {{ numeroAnios() }} años</option>
+                      <option v-if="op.tipo === 'GRATIS'" value="PERMANENTE">Sin vencimiento (gratis)</option>
                     </select>
                   </div>
-                  <div class="col-3" v-if="terminoDe(op.clave).plan !== 'PERMANENTE'">
+                  <div class="col-3" v-if="terminoDe(op.clave).plan !== 'PERMANENTE' && terminoDe(op.clave).plan !== 'TRIENAL'">
                     <label class="form-label small mb-0">Periodos</label>
                     <input v-model.number="terminoDe(op.clave).periodos" type="number" min="1" class="form-control form-control-sm" />
                   </div>
@@ -345,7 +346,7 @@
                       <td><code>{{ t.clave }}</code></td>
                       <td>{{ etiquetaPlan(t) }}</td>
                       <td class="small">{{ fmtFecha(t.fechaInicio) }}</td>
-                      <td class="small">{{ t.expiracion === 'PERMANENTE' ? 'Permanente' : fmtFecha(t.expiracion) }}</td>
+                      <td class="small">{{ t.expiracion === 'PERMANENTE' ? 'Sin vencimiento' : fmtFecha(t.expiracion) }}</td>
                       <td><span class="badge" :class="t.vigente ? 'bg-success' : 'bg-danger'">{{ t.vigente ? 'Vigente' : 'Vencido' }}</span></td>
                     </tr>
                   </tbody>
@@ -834,10 +835,10 @@
                       <thead><tr><th>Plan</th><th style="width:110px;">Periodos</th><th style="width:130px;">Precio (S/)</th><th style="width:60px;"></th></tr></thead>
                       <tbody>
                         <tr v-for="p in planesModulo" :key="p.tipo">
-                          <td class="small">{{ etiquetaPlan(p) }}</td>
+                          <td class="small">{{ etiquetaPlanCatalogo(p) }}</td>
                           <td>
                             <input v-model.number="p.periodos" type="number" min="1" class="form-control form-control-sm"
-                              :disabled="p.tipo === 'PERMANENTE'" />
+                              :disabled="p.tipo === 'PERMANENTE' || p.tipo === 'TRIENAL'" />
                           </td>
                           <td>
                             <input v-model.number="p.precio" type="number" min="0" step="0.01" class="form-control form-control-sm" />
@@ -1308,6 +1309,45 @@
           </div>
         </div>
         <div class="border rounded p-2 mt-3">
+          <h6 class="mb-2"><i class="bi bi-calendar3 me-1"></i>Plazos de licencia</h6>
+          <div class="form-hint mb-2">
+            Ya no existe el plan Permanente para modulos de pago: el plazo largo es
+            <b>Plan de N años</b>. Este numero define su duracion y su etiqueta en la Tienda;
+            puede cambiarlo cuando quiera sin recompilar. Los modulos GRATIS siguen sin vencimiento.
+          </div>
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label small mb-0" for="pm-max-anios">Tope maximo de años</label>
+              <input id="pm-max-anios" v-model.number="paramForm.MAX_ANIOS_LICENCIA" type="number" min="1" max="20"
+                     class="form-control form-control-sm" placeholder="3" />
+            </div>
+          </div>
+        </div>
+        <div class="border rounded p-2 mt-3">
+          <h6 class="mb-2"><i class="bi bi-file-earmark-text me-1"></i>Catalogo publico de normativas</h6>
+          <div class="form-hint mb-2">
+            MOODU descarga aqui los catalogos de facturacion. Si el repo se muda, cambia la URL
+            y ningun equipo necesita recompilar. Sin valor se usa la ubicacion embebida.
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="pm-norm-repo">URL del repositorio</label>
+              <input id="pm-norm-repo" v-model="paramForm.NORMATIVAS_REPO_URL" class="form-control form-control-sm"
+                     placeholder="https://github.com/DanielQuispeRojas/moodu_normativas.git" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="pm-norm-manifest">URL del manifiesto</label>
+              <input id="pm-norm-manifest" v-model="paramForm.NORMATIVAS_MANIFEST_URL" class="form-control form-control-sm"
+                     placeholder="https://raw.githubusercontent.com/DanielQuispeRojas/moodu_normativas/main/manifest.json" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="pm-norm-version">Version vigente</label>
+              <input id="pm-norm-version" v-model="paramForm.NORMATIVAS_VERSION" class="form-control form-control-sm"
+                     placeholder="2026.1" />
+            </div>
+          </div>
+        </div>
+        <div class="border rounded p-2 mt-3">
           <div class="form-check form-switch">
             <input id="pm-mud-activa" v-model="paramBool.MUDANZA_ACTIVA" class="form-check-input" type="checkbox" />
             <label class="form-check-label" for="pm-mud-activa">
@@ -1429,7 +1469,8 @@ createApp({
         if (!m || !m.clave) continue
         if (seen.has(m.clave)) continue
         seen.add(m.clave)
-        opts.push({ clave: m.clave, etiqueta: m.nombre && m.nombre !== m.clave ? m.clave + ' · ' + m.nombre : m.clave })
+        opts.push({ clave: m.clave, tipo: m.tipo,
+          etiqueta: m.nombre && m.nombre !== m.clave ? m.clave + ' · ' + m.nombre : m.clave })
       }
       for (const k of CLAVES_CONOCIDAS) {
         if (!seen.has(k)) { seen.add(k); opts.push({ clave: k, etiqueta: k }) }
@@ -1625,7 +1666,13 @@ createApp({
     }
 
     // ─── PARAMETROS del Hub: URL publica, Comprape y aviso de mudanza ───
-    const PARAM_VACIO = { HUB_URL:'', COMPRAPE_URL:'', MUDANZA_ACTIVA:'', MUDANZA_URL_NUEVA:'', MUDANZA_FECHA_LIMITE:'', MUDANZA_MENSAJE:'' }
+    const PARAM_VACIO = { HUB_URL:'', COMPRAPE_URL:'', MAX_ANIOS_LICENCIA:'3', NORMATIVAS_REPO_URL:'', NORMATIVAS_MANIFEST_URL:'', NORMATIVAS_VERSION:'', MUDANZA_ACTIVA:'', MUDANZA_URL_NUEVA:'', MUDANZA_FECHA_LIMITE:'', MUDANZA_MENSAJE:'' }
+    // HUB-11: una sola fuente para la etiqueta del plan largo (sirve aunque el
+    // Hub aun no tenga el parametro guardado).
+    function numeroAnios() {
+      const n = Number(paramForm.MAX_ANIOS_LICENCIA)
+      return Number.isFinite(n) && n >= 1 && n <= 20 ? Math.round(n) : 3
+    }
     const paramForm = reactive({ ...PARAM_VACIO })
     const paramBool = reactive({ MUDANZA_ACTIVA: false })
     const paramMsg = ref('')
@@ -1855,14 +1902,19 @@ createApp({
     // ─── PLANES del modulo (REQ-HUB-PLANES-01) ───────────────
     const planesModulo = ref([])
     const planNuevo = ref('')
-    const TIPOS_PLAN = ['MENSUAL', 'ANUAL', 'PERMANENTE']
+    // HUB-11: PERMANENTE ya no se ofrece para planes de pago. Se sigue
+    // leyendo si viene en una BD vieja (no se rompe el historial).
+    const TIPOS_PLAN = ['MENSUAL', 'ANUAL', 'TRIENAL']
 
     function etiquetaPlanTipo(t) {
-      return t === 'MENSUAL' ? 'Mensual' : (t === 'ANUAL' ? 'Anual' : 'Permanente')
+      if (t === 'MENSUAL') return 'Mensual'
+      if (t === 'ANUAL') return 'Anual'
+      if (t === 'TRIENAL') return `Plan de ${numeroAnios()} años`
+      return 'Permanente (legado)'
     }
-    function etiquetaPlan(p) {
+    function etiquetaPlanCatalogo(p) {
       const base = etiquetaPlanTipo(p.tipo)
-      if (p.tipo === 'PERMANENTE') return base
+      if (p.tipo === 'PERMANENTE' || p.tipo === 'TRIENAL') return base
       const n = Math.max(1, Number(p.periodos) || 1)
       return n === 1 ? base : base + ' x' + n
     }
@@ -2064,7 +2116,7 @@ createApp({
     }
     // Termino heredado de la vigencia global (igual que el backend).
     function planHeredado(l) {
-      if (l.vigenciaUnidad === 'INDEFINIDO') return { plan: 'PERMANENTE', periodos: 1 }
+      if (l.vigenciaUnidad === 'INDEFINIDO') return { plan: 'TRIENAL', periodos: 1 }
       if (l.vigenciaUnidad === 'ANIO') return { plan: 'ANUAL', periodos: Math.max(1, l.vigenciaValor || 1) }
       return { plan: 'MENSUAL', periodos: l.vigenciaUnidad === 'DIAS' ? 1 : Math.max(1, l.vigenciaValor || 1) }
     }
@@ -2083,7 +2135,7 @@ createApp({
         const c = t.clave || t.moduloClave
         if (!c) continue
         map[c] = {
-          plan: ['PERMANENTE', 'MENSUAL', 'ANUAL'].includes(t.plan) ? t.plan : 'MENSUAL',
+          plan: ['PERMANENTE', 'MENSUAL', 'ANUAL', 'TRIENAL'].includes(t.plan) ? t.plan : 'MENSUAL',
           periodos: Math.max(1, t.periodos || 1),
           fechaInicio: String(t.fechaInicio || '').substring(0, 10) || fechaHoyISO()
         }
@@ -2132,7 +2184,7 @@ createApp({
       for (const clave of (l.modulosSel || [])) {
         const t = (l.terminos && l.terminos[clave]) || { plan: 'MENSUAL', periodos: 1 }
         det.push({ clave, plan: t.plan || 'MENSUAL',
-          periodos: t.plan === 'PERMANENTE' ? 1 : Math.max(1, t.periodos || 1),
+          periodos: (t.plan === 'PERMANENTE' || t.plan === 'TRIENAL') ? 1 : Math.max(1, t.periodos || 1),
           fechaInicio: (t.fechaInicio || fechaHoyISO()).substring(0, 10) })
       }
       // Extras fuera de catalogo: plan Mensual x1 desde hoy.
@@ -2171,7 +2223,8 @@ createApp({
       return d.length ? d : (Array.isArray(l?.modulos) ? l.modulos.map(m => ({ clave: m, vigente: true })) : [])
     }
     function etiquetaPlan(t) {
-      if (t.plan === 'PERMANENTE') return 'Permanente'
+      if (t.plan === 'PERMANENTE') return 'Sin vencimiento (gratis)'
+      if (t.plan === 'TRIENAL') return `Plan de ${numeroAnios()} años`
       if (t.plan === 'ANUAL') return `Anual x${t.periodos || 1}`
       return `Mensual x${t.periodos || 1}`
     }
@@ -2498,13 +2551,13 @@ createApp({
       comprapePlan, comprapeForm, comprapeMsg, comprapeOk, comprapeGuardando,
       cargarPlanComprape, guardarPlanComprape,
       editarPaq, guardarPaq, eliminarPaq,       editarMod, guardarMod, eliminarMod, fotoMod, fotosMod, fotoMsg, abrirFotos, subirFoto, eliminarFoto, subirIcono, fotoUrl,
-      planesModulo, planNuevo, PLANOS_LIBRES, etiquetaPlan, etiquetaPlanTipo, agregarPlan, quitarPlan, guardarPlanesEditados,
+      planesModulo, planNuevo, PLANOS_LIBRES, etiquetaPlanCatalogo, etiquetaPlanTipo, agregarPlan, quitarPlan, guardarPlanesEditados,
       contactoForm, contactoMsg, contactoOk, guardandoContacto, cargarContacto, guardarContacto,
       MAX_REDES, MAX_PORTADA, ICONOS_CONTACTO,
       portadaForm, portadaMsg, portadaMsgOk, agregarRed, quitarRed,
       agregarPortadaUrl, agregarPortadaImagen, quitarPortada, moverPortada,
       elegirPortadaImagen, imagenPortadaSrc,
-      paramForm, paramBool, paramMsg, paramOk, guardandoParam, cargarParametros, guardarParametros,
+      paramForm, paramBool, paramMsg, paramOk, guardandoParam, cargarParametros, guardarParametros, numeroAnios,
       cargarValoraciones, toggleValoracion, eliminarValoracion,
       fotoOk,
       cargarValoracionesModulos, promedioMod, verValoracionesModulo,

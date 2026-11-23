@@ -29,6 +29,20 @@ public class ParametroService {
     public static final String HUB_URL = "HUB_URL";
     /** URL de la tienda Comprape (vacia = el desktop usa su override local). */
     public static final String COMPRAPE_URL = "COMPRAPE_URL";
+
+    /**
+     * Catalogo publico de normativas (REQ-HUB-NORMATIVAS-01 / HUB-10). Lo edita
+     * el ADMIN en caliente: si el repo se muda, cambia el parametro y ningun
+     * MOODU necesita recompilar. Los defaults son el repo publico actual.
+     */
+    public static final String NORMATIVAS_REPO_URL = "NORMATIVAS_REPO_URL";
+    public static final String NORMATIVAS_MANIFEST_URL = "NORMATIVAS_MANIFEST_URL";
+    public static final String NORMATIVAS_VERSION = "NORMATIVAS_VERSION";
+    public static final String NORMATIVAS_REPO_URL_DEFAULT =
+            "https://github.com/DanielQuispeRojas/moodu_normativas.git";
+    public static final String NORMATIVAS_MANIFEST_URL_DEFAULT =
+            "https://raw.githubusercontent.com/DanielQuispeRojas/moodu_normativas/main/manifest.json";
+    public static final String NORMATIVAS_VERSION_DEFAULT = "2026.1";
     /**
      * Factor del precio ANUAL: {@code anual = mensual × factor} (REQ-HUBPAQ-01).
      * Lo ingresa el admin; default 10 (el modelo documentado de 10 mensualidades).
@@ -37,6 +51,17 @@ public class ParametroService {
     public static final int ANUAL_FACTOR_DEFAULT = 10;
     public static final int ANUAL_FACTOR_MIN = 1;
     public static final int ANUAL_FACTOR_MAX = 24;
+
+    /**
+     * Tope de anios de un plan de pago (HUB-11). Sustituye al antiguo plan
+     * PERMANENTE: ningun modulo de PAGA puede superar este plazo. El admin lo
+     * edita en caliente; el plan TRIENAL deriva su vigencia y su etiqueta de
+     * aqui (si cambia a 5, el "plan de 3 anios" pasa a ser de 5 sin recompilar).
+     */
+    public static final String MAX_ANIOS_LICENCIA = "MAX_ANIOS_LICENCIA";
+    public static final int MAX_ANIOS_LICENCIA_DEFAULT = 3;
+    public static final int MAX_ANIOS_LICENCIA_MIN = 1;
+    public static final int MAX_ANIOS_LICENCIA_MAX = 20;
 
     private final HubParametroRepo repo;
 
@@ -64,6 +89,20 @@ public class ParametroService {
     @Transactional
     public void set(String clave, String valor, String usuario) {
         if (clave == null || clave.isBlank()) return;
+        // El tope de anios se valida AQUI (punto unico): el panel puede mandarlo
+        // por el formulario generico de parametros o por un endpoint propio.
+        if (MAX_ANIOS_LICENCIA.equalsIgnoreCase(clave.trim())) {
+            int n;
+            try {
+                n = Integer.parseInt(String.valueOf(valor).trim());
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("El tope de anios debe ser un numero entero.");
+            }
+            if (n < MAX_ANIOS_LICENCIA_MIN || n > MAX_ANIOS_LICENCIA_MAX) {
+                throw new IllegalArgumentException("El tope de anios debe estar entre "
+                        + MAX_ANIOS_LICENCIA_MIN + " y " + MAX_ANIOS_LICENCIA_MAX + ".");
+            }
+        }
         HubParametro p = repo.findByClaveIgnoreCase(clave.trim()).orElseGet(() -> new HubParametro(clave.trim(), valor));
         p.setClave(clave.trim());
         p.setValor(valor == null || valor.isBlank() ? null : valor.trim());
@@ -83,6 +122,22 @@ public class ParametroService {
             return f >= ANUAL_FACTOR_MIN && f <= ANUAL_FACTOR_MAX ? f : ANUAL_FACTOR_DEFAULT;
         } catch (RuntimeException e) {
             return ANUAL_FACTOR_DEFAULT;
+        }
+    }
+
+    /**
+     * Tope de anios vigente. Un valor corrupto cae al default: es un parametro
+     * de contratacion, nunca debe impedir que el Hub arranque (HUB-11).
+     */
+    @Transactional(readOnly = true)
+    public int maxAniosLicencia() {
+        String v = get(MAX_ANIOS_LICENCIA, String.valueOf(MAX_ANIOS_LICENCIA_DEFAULT));
+        try {
+            int n = Integer.parseInt(v.trim());
+            return n >= MAX_ANIOS_LICENCIA_MIN && n <= MAX_ANIOS_LICENCIA_MAX
+                    ? n : MAX_ANIOS_LICENCIA_DEFAULT;
+        } catch (RuntimeException e) {
+            return MAX_ANIOS_LICENCIA_DEFAULT;
         }
     }
 
@@ -145,5 +200,54 @@ public class ParametroService {
         if (msg != null && !msg.isBlank()) mud.put("mensaje", msg.trim());
         m.put("mudanza", mud);
         return m;
+    }
+
+    /**
+     * Contrato publico de normativas (HUB-10). El Hub es la UNICA fuente de la
+     * ubicacion del catalogo: asi un cambio de hosting del repo no obliga a
+     * recompilar ningun MOODU.
+     *
+     * <p>Sin parametro se publica el fallback embebido con aviso; una URL
+     * mal escrita NO se propaga como activa (se cae al fallback y se avisa).
+     * La lectura es publica y no consume cupo de licencia.</p>
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> normativas() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        String repo = get(NORMATIVAS_REPO_URL, null);
+        String manifest = get(NORMATIVAS_MANIFEST_URL, null);
+        String version = get(NORMATIVAS_VERSION, null);
+
+        boolean repoOk = urlValida(repo);
+        boolean manifestOk = urlValida(manifest);
+        boolean versionOk = version != null && !version.isBlank()
+                && version.trim().matches("^[0-9]{4}\\.[0-9]{1,3}$");
+
+        m.put("normativasRepoUrl", repoOk ? repo.trim() : NORMATIVAS_REPO_URL_DEFAULT);
+        m.put("normativasManifestUrl", manifestOk ? manifest.trim() : NORMATIVAS_MANIFEST_URL_DEFAULT);
+        m.put("normativasVersion", versionOk ? version.trim() : NORMATIVAS_VERSION_DEFAULT);
+        m.put("normativasOrigen",
+                (repoOk && manifestOk && versionOk) ? "HUB" : "EMBEBIDO");
+        if (!(repoOk && manifestOk && versionOk)) {
+            StringBuilder aviso = new StringBuilder("Usando ubicacion embebida del catalogo de normativas");
+            if (repo != null && !repo.isBlank() && !repoOk) aviso.append(" (repo invalido)");
+            if (manifest != null && !manifest.isBlank() && !manifestOk) aviso.append(" (manifiesto invalido)");
+            if (version != null && !version.isBlank() && !versionOk) aviso.append(" (version invalida)");
+            m.put("normativasAviso", aviso.append(".").toString());
+        }
+        return m;
+    }
+
+    /** http(s) con host: evita propagar como activo un valor mal escrito. */
+    private static boolean urlValida(String valor) {
+        if (valor == null || valor.isBlank()) return false;
+        try {
+            var uri = java.net.URI.create(valor.trim());
+            String scheme = uri.getScheme();
+            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    && uri.getHost() != null && !uri.getHost().isBlank();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 }

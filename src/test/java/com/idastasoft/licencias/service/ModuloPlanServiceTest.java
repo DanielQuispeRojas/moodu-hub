@@ -115,13 +115,14 @@ class ModuloPlanServiceTest {
     }
 
     @Test
-    @DisplayName("modulo PAGA sin vigencia (0 dias) -> PERMANENTE")
-    void sinVigenciaSeSintetizaPermanente() {
+    @DisplayName("modulo PAGA sin vigencia (0 dias) -> TRIENAL (HUB-11)")
+    void sinVigenciaSeSintetizaTrienal() {
         sinPlanesPropios();
         List<Map<String, Object>> out = service.planesPublicos(1L,
                 modulo("legacy", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("900"), 0));
-        assertEquals("PERMANENTE", out.get(0).get("tipo"));
-        assertEquals("Permanente", out.get(0).get("etiqueta"));
+        assertEquals("TRIENAL", out.get(0).get("tipo"));
+        assertEquals("Plan de 3 años", out.get(0).get("etiqueta"));
+        assertEquals(1095, out.get(0).get("vigenciaDias"));
     }
 
     // ─── Planes propios ────────────────────────────────────────────
@@ -200,16 +201,16 @@ class ModuloPlanServiceTest {
     }
 
     @Test
-    @DisplayName("PERMANENTE ignora los periodos que le manden")
-    void permanenteIgnoraPeriodos() {
+    @DisplayName("TRIENAL ignora los periodos que le manden (HUB-11)")
+    void trienalIgnoraPeriodos() {
         when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of());
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
         Map<String, Object> out = service.guardar(
                 modulo("caja", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("1500"), 30),
-                Map.of("tipo", "PERMANENTE", "precio", "1500", "periodos", 12));
+                Map.of("tipo", "TRIENAL", "precio", "1500", "periodos", 12));
         assertEquals(1, out.get("periodos"));
-        assertEquals(0, out.get("vigenciaDias"));
+        assertEquals(1095, out.get("vigenciaDias"));
     }
 
     @Test
@@ -223,26 +224,24 @@ class ModuloPlanServiceTest {
     // ─── Modulos que son un TIER de MOODU (PLUS / PRO) ────────────────
 
     @Test
-    @DisplayName("moodu_plus solo admite PERMANENTE")
-    void plusSoloPermanente() {
+    @DisplayName("moodu_plus solo admite TRIENAL (antes PERMANENTE)")
+    void plusSoloTrienal() {
         when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of());
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
-        // Se acepta PERMANENTE.
         Map<String, Object> ok = service.guardar(modulo("moodu_plus", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("1200"), 0),
-                Map.of("tipo", "PERMANENTE", "precio", "1200"));
-        assertEquals("PERMANENTE", ok.get("tipo"));
+                Map.of("tipo", "TRIENAL", "precio", "1200"));
+        assertEquals("TRIENAL", ok.get("tipo"));
 
-        // Y se rechaza el mensual, con el motivo.
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.guardar(
                 modulo("moodu_plus", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("1200"), 0),
                 Map.of("tipo", "MENSUAL", "precio", "1200")));
-        assertTrue(e.getMessage().contains("PERMANENTE"), e.getMessage());
+        assertTrue(e.getMessage().contains("TRIENAL"), e.getMessage());
     }
 
     @Test
-    @DisplayName("moodu_pro admite MENSUAL y ANUAL, pero no PERMANENTE")
-    void proNoAdmitePermanente() {
+    @DisplayName("moodu_pro admite MENSUAL y ANUAL, pero no TRIENAL")
+    void proNoAdmiteTrienal() {
         when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of(mensual("299")));
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -253,16 +252,16 @@ class ModuloPlanServiceTest {
         }
         assertThrows(IllegalArgumentException.class, () -> service.guardar(
                 modulo("moodu_pro", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("299"), 30),
-                Map.of("tipo", "PERMANENTE", "precio", "299")));
+                Map.of("tipo", "TRIENAL", "precio", "299")));
     }
 
     @Test
-    @DisplayName("un modulo normal NO se restringe (puede ser permanente, mensual o anual)")
+    @DisplayName("un modulo normal NO se restringe (trienal, mensual o anual)")
     void moduloNormalSinRestriccion() {
         when(repo.findByModuloIdOrderByOrdenAscIdAsc(1L)).thenReturn(List.of(mensual("3500")));
         when(repo.save(any(ModuloPlan.class))).thenAnswer(i -> i.getArgument(0));
 
-        for (String tipo : new String[]{"PERMANENTE", "MENSUAL", "ANUAL"}) {
+        for (String tipo : new String[]{"TRIENAL", "MENSUAL", "ANUAL"}) {
             Map<String, Object> ok = service.guardar(modulo("recepcion", ModuloCatalogo.TipoLicencia.PAGA, new BigDecimal("3500"), 0),
                     Map.of("tipo", tipo, "precio", "3500"));
             assertEquals(tipo, ok.get("tipo"));

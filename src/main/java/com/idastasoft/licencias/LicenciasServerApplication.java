@@ -116,6 +116,7 @@ public class LicenciasServerApplication {
     // licencias con lista legacy y sin filas de terminos). Fuente unica: la
     // tabla de terminos; la lista legacy se vacia al migrar.
     @Bean
+    @org.springframework.core.annotation.Order(1)
     public CommandLineRunner migrarTerminosModulos(
             com.idastasoft.licencias.repository.LicenciaRepo licenciaRepo,
             com.idastasoft.licencias.service.LicenciaService licenciaService) {
@@ -132,6 +133,28 @@ public class LicenciasServerApplication {
                     System.err.println("[Hub] Migracion de terminos fallida para licencia "
                             + l.getId() + ": " + e.getMessage());
                 }
+            }
+        };
+    }
+
+    // HUB-11: PERMANENTE de pago -> TRIENAL desde hoy (los GRATIS se saltan).
+    // Corre DESPUES de migrarTerminosModulos (@Order 1) para cubrir tambien
+    // las licencias cuyos terminos se crean en esa migracion. Idempotente.
+    @Bean
+    @org.springframework.core.annotation.Order(2)
+    public CommandLineRunner migrarPlanesTrienales(
+            com.idastasoft.licencias.service.LicenciaService licenciaService,
+            com.idastasoft.licencias.service.ModuloPlanService moduloPlanService) {
+        return args -> {
+            try {
+                int terminos = licenciaService.convertirPermanentesDePago();
+                int planes = moduloPlanService.convertirPermanentesDePago();
+                if (terminos > 0 || planes > 0) {
+                    System.out.println("[Hub] HUB-11: " + terminos + " terminos y " + planes
+                            + " planes Permanente -> TRIENAL (desde hoy).");
+                }
+            } catch (Exception e) {
+                System.err.println("[Hub] HUB-11 migration fallida: " + e.getMessage());
             }
         };
     }

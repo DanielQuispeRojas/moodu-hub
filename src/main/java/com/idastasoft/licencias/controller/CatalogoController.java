@@ -152,6 +152,8 @@ public class CatalogoController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.putAll(parametroService.mudanzaYUrls(urlBase(req)));
+        // HUB-10: ubicacion del catalogo de normativas en caliente (publico).
+        out.putAll(parametroService.normativas());
         return ResponseEntity.ok(out);
     }
 

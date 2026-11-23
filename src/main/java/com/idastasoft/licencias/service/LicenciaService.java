@@ -12,6 +12,7 @@ import com.idastasoft.licencias.repository.LicenciaPackRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
 import com.idastasoft.licencias.repository.ModuloCatalogoRepo;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,17 @@ public class LicenciaService {
     private final ModuloCatalogoRepo moduloRepo;
     private final PackDispositivosService packDispositivosService;
     private final LicenciaPackRepo licenciaPackRepo;
+
+    /**
+     * HUB-11: parametros del Hub en caliente. Inyeccion opcional para no romper
+     * los tests y callers que construyen el servicio a mano (con default 3).
+     */
+    @Autowired(required = false)
+    private ParametroService parametros;
+
+    private int maxAnios() {
+        return parametros == null ? ParametroService.MAX_ANIOS_LICENCIA_DEFAULT : parametros.maxAniosLicencia();
+    }
 
     public LicenciaService(LicenciaRepo licenciaRepo, MaquinaRepo maquinaRepo, LicenciaModuloRepo terminoRepo,
                            PlanComprapeService planComprapeService, ModuloCatalogoRepo moduloRepo,
@@ -96,12 +108,16 @@ public class LicenciaService {
     }
 
     // ─── TERMINOS POR MODULO (REQ-HUB-MODULOS-01) ─────────
-    /** Expiracion del termino (null = permanente). */
+    /** Expiracion del termino (null = permanente, solo GRATIS/legado). */
     public LocalDateTime expiracionTermino(LicenciaModulo t) {
         if (t.getPlan() == LicenciaModulo.PlanModulo.PERMANENTE) return null;
         LocalDateTime inicio = t.getFechaInicio() != null ? t.getFechaInicio() : LocalDateTime.now();
         int n = Math.max(1, t.getPeriodos());
-        return t.getPlan() == LicenciaModulo.PlanModulo.ANUAL ? inicio.plusYears(n) : inicio.plusMonths(n);
+        return switch (t.getPlan()) {
+            case ANUAL -> inicio.plusYears(n);
+            case TRIENAL -> inicio.plusYears(maxAnios());
+            default -> inicio.plusMonths(n);
+        };
     }
 
     public boolean terminoVigente(LicenciaModulo t) {
@@ -261,6 +277,20 @@ public class LicenciaService {
                 } catch (NumberFormatException e) {
                     t.setPeriodos(1);
                 }
+                // HUB-11: el servidor valida el contrato (el panel solo avisa).
+                if (t.getPlan() == LicenciaModulo.PlanModulo.PERMANENTE && !esModuloGratis(t.getModuloClave())) {
+                    throw new IllegalArgumentException("El plan Permanente ya no se ofrece para "
+                            + t.getModuloClave() + ": use TRIENAL (plan de " + maxAnios() + " años).");
+                }
+                if (t.getPlan() == LicenciaModulo.PlanModulo.ANUAL && t.getPeriodos() > maxAnios()) {
+                    throw new IllegalArgumentException("El plan Anual de " + t.getModuloClave()
+                            + " no puede superar " + maxAnios() + " años.");
+                }
+                if (t.getPlan() == LicenciaModulo.PlanModulo.MENSUAL && t.getPeriodos() > maxAnios() * 12) {
+                    throw new IllegalArgumentException("El plan Mensual de " + t.getModuloClave()
+                            + " no puede superar " + maxAnios() + " años.");
+                }
+                if (t.getPlan() == LicenciaModulo.PlanModulo.TRIENAL) t.setPeriodos(1);
                 Object ini = d.get("fechaInicio");
                 if (ini != null && !String.valueOf(ini).isBlank()) {
                     try {
@@ -287,24 +317,65 @@ public class LicenciaService {
                 if (clave == null || clave.isBlank()) continue;
                 LicenciaModulo t = new LicenciaModulo();
                 t.setModuloClave(clave.trim());
-                if (l.getVigenciaUnidad() == Licencia.UnidadVigencia.INDEFINIDO) {
+                if (esModuloGratis(clave)) {
+                    // Los GRATIS siguen sin vencimiento (decision del usuario).
                     t.setPlan(LicenciaModulo.PlanModulo.PERMANENTE);
+                    t.setPeriodos(1);
+                } else if (l.getVigenciaUnidad() == Licencia.UnidadVigencia.INDEFINIDO) {
+                    // HUB-11: un pago "indefinido" hereda ahora el plan largo
+                    // desde HOY (nadie queda vencido de golpe).
+                    t.setPlan(LicenciaModulo.PlanModulo.TRIENAL);
                     t.setPeriodos(1);
                 } else if (l.getVigenciaUnidad() == Licencia.UnidadVigencia.ANIO) {
                     t.setPlan(LicenciaModulo.PlanModulo.ANUAL);
-                    t.setPeriodos(Math.max(1, l.getVigenciaValor()));
+                    t.setPeriodos(Math.min(maxAnios(), Math.max(1, l.getVigenciaValor())));
                 } else {
                     // DIAS se aproxima a MENSUAL (minimo un mes); MESES directo.
                     t.setPlan(LicenciaModulo.PlanModulo.MENSUAL);
-                    t.setPeriodos(l.getVigenciaUnidad() == Licencia.UnidadVigencia.DIAS ? 1
-                            : Math.max(1, l.getVigenciaValor()));
+                    t.setPeriodos(Math.min(maxAnios() * 12,
+                            l.getVigenciaUnidad() == Licencia.UnidadVigencia.DIAS ? 1
+                                    : Math.max(1, l.getVigenciaValor())));
                 }
-                t.setFechaInicio(l.getFechaInicio() != null ? l.getFechaInicio() : LocalDateTime.now());
+                t.setFechaInicio((l.getVigenciaUnidad() == Licencia.UnidadVigencia.INDEFINIDO
+                        && !esModuloGratis(clave)) ? LocalDateTime.now()
+                        : (l.getFechaInicio() != null ? l.getFechaInicio() : LocalDateTime.now()));
                 nuevos.add(t);
             }
         }
         reemplazarTerminos(l, nuevos);
         recalcularDispositivos(l);
+    }
+
+    /** true solo si el modulo del catalogo es GRATIS (unico PERMANENTE permitido). */
+    private boolean esModuloGratis(String clave) {
+        if (clave == null || moduloRepo == null) return false;
+        try {
+            ModuloCatalogo m = moduloRepo.findByClave(clave.trim());
+            return m != null && m.getTipo() == ModuloCatalogo.TipoLicencia.GRATIS;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Migration HUB-11: todo termino PERMANENTE de un modulo de PAGA pasa a
+     * TRIENAL con fecha de hoy (no se aplica el plazo desde la fecha original:
+     * nadie queda vencido de golpe). Los GRATIS se conservan sin vencimiento.
+     * Idempotente: tras la primera corrida no queda PERMANENTE de pago.
+     */
+    @Transactional
+    public int convertirPermanentesDePago() {
+        int n = 0;
+        for (LicenciaModulo t : terminoRepo.findAll()) {
+            if (t.getPlan() != LicenciaModulo.PlanModulo.PERMANENTE) continue;
+            if (esModuloGratis(t.getModuloClave())) continue;
+            t.setPlan(LicenciaModulo.PlanModulo.TRIENAL);
+            t.setPeriodos(1);
+            t.setFechaInicio(LocalDateTime.now());
+            terminoRepo.save(t);
+            n++;
+        }
+        return n;
     }
 
     /**

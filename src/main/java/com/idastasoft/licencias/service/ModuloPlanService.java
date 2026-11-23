@@ -65,10 +65,11 @@ public class ModuloPlanService {
         o.put("descuentoPct", modulo == null || modulo.getDescuentoPct() == null ? 0 : modulo.getDescuentoPct());
         o.put("descuentoVigente", oferta);
         o.put("dispositivosIncluidos", modulo == null ? 0 : modulo.dispositivosIncluidosEfectivos());
+        int tope = parametros.maxAniosLicencia();
         o.put("periodos", p.getPeriodos());
-        o.put("vigenciaDias", p.vigenciaDias());
+        o.put("vigenciaDias", p.vigenciaDias(tope));
         o.put("vigente", p.isActivo());
-        o.put("etiqueta", etiqueta(p.getTipo(), p.getPeriodos()));
+        o.put("etiqueta", etiqueta(p.getTipo(), p.getPeriodos(), tope));
         o.put("gratuito", listo.compareTo(BigDecimal.ZERO) == 0
                 && p.getTipo() != ModuloPlan.TipoPlan.PERMANENTE);
         return o;
@@ -90,24 +91,27 @@ public class ModuloPlanService {
             o.put("etiqueta", "Gratuito");
             o.put("gratuito", true);
         } else {
+            int tope = parametros.maxAniosLicencia();
             int dias = Math.max(0, m.getVigenciaDias());
-            if (dias == 0) {
-                o.put("tipo", "PERMANENTE");
+            if (dias == 0 || dias > 365) {
+                // Un legacy "permanente" (dias 0) pasa a TRIENAL: ya no se
+                // ofrece sin vencimiento para modulo de PAGA (HUB-11).
+                o.put("tipo", "TRIENAL");
                 o.put("periodos", 1);
-                o.put("vigenciaDias", 0);
-                o.put("etiqueta", "Permanente");
+                o.put("vigenciaDias", tope * 365);
+                o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.TRIENAL, 1, tope));
             } else if (dias >= 300) {
-                int anios = Math.max(1, Math.round(dias / 365f));
+                int anios = Math.min(tope, Math.max(1, Math.round(dias / 365f)));
                 o.put("tipo", "ANUAL");
                 o.put("periodos", anios);
                 o.put("vigenciaDias", anios * 365);
-                o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.ANUAL, anios));
+                o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.ANUAL, anios, tope));
             } else {
-                int meses = Math.max(1, Math.round(dias / 30f));
+                int meses = Math.min(tope * 12, Math.max(1, Math.round(dias / 30f)));
                 o.put("tipo", "MENSUAL");
                 o.put("periodos", meses);
                 o.put("vigenciaDias", meses * 30);
-                o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.MENSUAL, meses));
+                o.put("etiqueta", etiqueta(ModuloPlan.TipoPlan.MENSUAL, meses, tope));
             }
             BigDecimal listo = m.getPrecio() != null ? m.getPrecio() : BigDecimal.ZERO;
             o.put("precio", m.precioConDescuento(listo, java.time.LocalDate.now()));
@@ -121,10 +125,12 @@ public class ModuloPlanService {
         return out;
     }
 
-    private String etiqueta(ModuloPlan.TipoPlan t, int periodos) {
+    private String etiqueta(ModuloPlan.TipoPlan t, int periodos, int maxAnios) {
         int p = Math.max(1, periodos);
+        int tope = Math.max(1, maxAnios);
         return switch (t) {
             case PERMANENTE -> "Permanente";
+            case TRIENAL -> "Plan de " + tope + " años";
             case ANUAL -> p == 1 ? "Anual" : "Anual x" + p;
             case MENSUAL -> p == 1 ? "Mensual" : "Mensual x" + p;
         };
@@ -170,6 +176,17 @@ public class ModuloPlanService {
         ModuloPlan.TipoPlan tipo = parseTipo(body.get("tipo"));
         exigirPeriodicidadDelTier(modulo, tipo);
         int periodos = intDe(body.get("periodos"), 1);
+        int tope = parametros.maxAniosLicencia();
+        // HUB-11: ningun plan de pago puede superar el tope de anios. El
+        // servidor es la verdad; el panel solo espeja el motivo.
+        if (tipo == ModuloPlan.TipoPlan.ANUAL && periodos > tope) {
+            throw new IllegalArgumentException("El plan Anual no puede superar " + tope
+                    + " años (tope configurado en el Hub).");
+        }
+        if (tipo == ModuloPlan.TipoPlan.MENSUAL && periodos > tope * 12) {
+            throw new IllegalArgumentException("El plan Mensual no puede superar " + tope
+                    + " años (tope configurado en el Hub).");
+        }
         BigDecimal precio = precioDe(body.get("precio"));
 
         List<ModuloPlan> delModulo = repo.findByModuloIdOrderByOrdenAscIdAsc(modulo.getId());
@@ -194,7 +211,8 @@ public class ModuloPlanService {
             p.setOrden(delModulo.size());
         }
         p.setTipo(tipo);
-        p.setPeriodos(tipo == ModuloPlan.TipoPlan.PERMANENTE ? 1 : Math.max(1, periodos));
+        p.setPeriodos(tipo == ModuloPlan.TipoPlan.PERMANENTE || tipo == ModuloPlan.TipoPlan.TRIENAL
+                ? 1 : Math.max(1, periodos));
         p.setPrecio(precio);
         p.setActivo(!Boolean.FALSE.equals(body.get("activo")));
         ModuloPlan guardado = repo.save(p);
@@ -238,11 +256,38 @@ public class ModuloPlanService {
     }
 
     private ModuloPlan.TipoPlan parseTipo(Object v) {
+        ModuloPlan.TipoPlan t;
         try {
-            return ModuloPlan.TipoPlan.valueOf(String.valueOf(v).toUpperCase().trim());
+            t = ModuloPlan.TipoPlan.valueOf(String.valueOf(v).toUpperCase().trim());
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Plan invalido: debe ser MENSUAL, ANUAL o PERMANENTE");
+            throw new IllegalArgumentException("Plan invalido: debe ser MENSUAL, ANUAL o TRIENAL");
         }
+        // PERMANENTE se conserva para leer BDs viejas y modulos GRATIS, pero
+        // ya NO se puede crear: es la decision comercial de HUB-11.
+        if (t == ModuloPlan.TipoPlan.PERMANENTE) {
+            throw new IllegalArgumentException("Ya no se ofrece el plan Permanente: use TRIENAL (plan de "
+                    + parametros.maxAniosLicencia() + " años).");
+        }
+        return t;
+    }
+
+    /**
+     * Migration HUB-11: los planes PERMANENTE de modulos de PAGA pasan a
+     * TRIENAL conservando precio y orden. Idempotente (los GRATIS se saltan).
+     */
+    @Transactional
+    public int convertirPermanentesDePago() {
+        int n = 0;
+        for (ModuloPlan p : repo.findAll()) {
+            if (p.getTipo() != ModuloPlan.TipoPlan.PERMANENTE) continue;
+            ModuloCatalogo m = p.getModulo();
+            if (m != null && m.getTipo() == ModuloCatalogo.TipoLicencia.GRATIS) continue;
+            p.setTipo(ModuloPlan.TipoPlan.TRIENAL);
+            p.setPeriodos(1);
+            repo.save(p);
+            n++;
+        }
+        return n;
     }
 
     private int intDe(Object v, int def) {
