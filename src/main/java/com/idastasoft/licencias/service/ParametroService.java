@@ -177,6 +177,10 @@ public class ParametroService {
         for (HubParametro p : repo.findAllByOrderByClaveAsc()) {
             m.put(p.getClave(), p.getValor());
         }
+        // MEJ-08: el control de Términos existe desde la primera instalación,
+        // aunque nadie haya guardado parámetros todavía (REQ-LEGAL-01).
+        m.putIfAbsent("TERMINOS_VERSION", "1.0");
+        m.putIfAbsent("TERMINOS_REVISION", "2026-11-25");
         return m;
     }
 

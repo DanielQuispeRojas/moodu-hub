@@ -59,6 +59,21 @@ public class ValoracionService {
         return respuesta(dest, items);
     }
 
+    /**
+     * H-05: la LISTA PUBLICA no expone el correo completo del valorador.
+     * {@code mia} y {@code guardar} lo devuelven tal cual porque el propio
+     * interesado lo aporta (es su dato y lo necesita para editar).
+     */
+    static String mascaraCorreo(String correo) {
+        if (correo == null || correo.isBlank()) return correo;
+        int arroba = correo.indexOf('@');
+        if (arroba <= 0) return "***";
+        String nombre = correo.substring(0, arroba);
+        String dominio = correo.substring(arroba + 1);
+        String iniciales = nombre.length() <= 2 ? nombre : nombre.substring(0, 2);
+        return iniciales + "***@" + dominio;
+    }
+
     public Map<String, Object> mia(String destino, String correo) {
         String dest = (destino == null || destino.isBlank()) ? DESTINO_MOODU : destino.trim().toLowerCase();
         String mail = correo == null ? "" : correo.trim().toLowerCase();
@@ -119,7 +134,11 @@ public class ValoracionService {
         r.put("destino", destino);
         r.put("promedio", promedio(items));
         r.put("total", items.size());
-        r.put("items", items.stream().map(this::toMap).toList());
+        r.put("items", items.stream().map(v -> {
+            Map<String, Object> publico = toMap(v);
+            publico.put("correo", mascaraCorreo(v.getCorreo()));
+            return publico;
+        }).toList());
         return r;
     }
 

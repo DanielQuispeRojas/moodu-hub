@@ -153,6 +153,23 @@ public enum TipoMoodu {
         return periodicidadesPermitidas().contains(periodicidad.trim().toUpperCase(Locale.ROOT));
     }
 
+    /**
+     * H-06: periodicidad que se puede CREAR hoy. PLUS conserva PERMANENTE solo
+     * para LEER planes legacy (ver {@link #periodicidadesPermitidas()}), pero
+     * HUB-11 prohibe ofrecerlo de pago: al Alta se rechaza con motivo claro.
+     */
+    public boolean admiteAlta(String periodicidad) {
+        if (!admite(periodicidad)) return false;
+        String p = periodicidad.trim().toUpperCase(Locale.ROOT);
+        return !(this == PLUS && p.equals("PERMANENTE"));
+    }
+
+    /** Periodicidades que se pueden crear hoy (para el mensaje de error). */
+    public java.util.Set<String> periodicidadesAlta() {
+        if (this == PLUS) return java.util.Set.of("TRIENAL");
+        return periodicidadesPermitidas();
+    }
+
     public String etiqueta() {
         return switch (this) {
             case GRATIS -> "MOODU Gratis";

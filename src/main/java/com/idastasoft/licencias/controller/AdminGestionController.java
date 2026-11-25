@@ -7,6 +7,8 @@ import com.idastasoft.licencias.model.ModuloFoto;
 import com.idastasoft.licencias.model.Paquete;
 import com.idastasoft.licencias.model.TemaCatalogo;
 import com.idastasoft.licencias.model.VersionSistema;
+import com.idastasoft.licencias.model.HubAuditoria;
+import com.idastasoft.licencias.repository.HubAuditoriaRepo;
 import com.idastasoft.licencias.repository.DesarrolladorRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
@@ -15,11 +17,14 @@ import com.idastasoft.licencias.repository.ModuloFotoRepo;
 import com.idastasoft.licencias.repository.PaqueteRepo;
 import com.idastasoft.licencias.repository.TemaCatalogoRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
+import com.idastasoft.licencias.service.HubAuditoriaService;
 import com.idastasoft.licencias.service.HubConfigService;
 import com.idastasoft.licencias.service.LicenciaService;
 import com.idastasoft.licencias.service.PlanComprapeService;
+import com.idastasoft.licencias.util.VersionSistemaUtil;
 import com.idastasoft.licencias.model.HubContacto;
 import com.idastasoft.licencias.service.ContactoService;
+import com.idastasoft.licencias.service.ManualCatalogoService;
 import com.idastasoft.licencias.service.ModuloPlanService;
 import com.idastasoft.licencias.service.ParametroService;
 import com.idastasoft.licencias.service.TemaCatalogoService;
@@ -55,6 +60,8 @@ public class AdminGestionController {
     private final ModuloPlanService planService;
     private final ContactoService contactoService;
     private final ParametroService parametroService;
+    private final ManualCatalogoService manualService;
+    private final HubAuditoriaService auditoria;
 
     public AdminGestionController(LicenciaRepo licenciaRepo,
                                   PaqueteRepo paqueteRepo, MaquinaRepo maquinaRepo,
@@ -70,7 +77,9 @@ public class AdminGestionController {
                                    PlanComprapeService planComprapeService,
                                    ModuloPlanService planService,
                                    ContactoService contactoService,
-                                   ParametroService parametroService) {
+                                   ParametroService parametroService,
+                                   ManualCatalogoService manualService,
+                                   HubAuditoriaService auditoria) {
         this.licenciaRepo = licenciaRepo;
         this.paqueteRepo = paqueteRepo;
         this.maquinaRepo = maquinaRepo;
@@ -87,6 +96,17 @@ public class AdminGestionController {
         this.planService = planService;
         this.contactoService = contactoService;
         this.parametroService = parametroService;
+        this.manualService = manualService;
+        this.auditoria = auditoria;
+    }
+
+    /** MEJ-02: una sola via de registro; nunca guarda claves ni passwords. */
+    private void auditar(String accion, String entidad, String id, String detalle) {
+        String usuario = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication() == null ? "sistema"
+                : org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication().getName();
+        auditoria.registrar(usuario, accion, entidad, id, detalle);
     }
 
     // ─── LICENCIAS ──────────────────────────────
@@ -150,6 +170,8 @@ public class AdminGestionController {
             licenciaService.heredarTerminos(guardada, (List<String>) body.getOrDefault("modulos", List.of()));
         }
         licenciaService.recalcularDispositivos(guardada);
+        auditar("CREAR", "Licencia", String.valueOf(guardada.getId()),
+                "correo=" + guardada.getCorreo() + " modulos=" + body.getOrDefault("modulos", List.of()));
         return ResponseEntity.ok(licenciaRepo.findById(guardada.getId()).orElse(guardada));
     }
 
@@ -182,11 +204,13 @@ public class AdminGestionController {
             licenciaService.heredarTerminos(l, (List<String>) body.get("modulos"));
         }
         licenciaService.recalcularDispositivos(l);
+        auditar("ACTUALIZAR", "Licencia", String.valueOf(id), "campos=" + body.keySet());
         return ResponseEntity.ok(licenciaRepo.findById(id).orElse(l));
     }
 
     @DeleteMapping("/licencias/{id}")
     public ResponseEntity<?> eliminarLicencia(@PathVariable Long id) {
+        auditar("ELIMINAR", "Licencia", String.valueOf(id), null);
         licenciaRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
     }
@@ -265,7 +289,13 @@ public class AdminGestionController {
         try {
             ModuloCatalogo m = new ModuloCatalogo();
             aplicarCamposModulo(m, body);
-            return ResponseEntity.ok(moduloRepo.save(m));
+            ModuloCatalogo guardado = moduloRepo.save(m);
+            // REQ-AYU-02: un modulo oficial dado de alta despues del arranque
+            // recibe su guia de fabrica en el mismo acto (nunca sobreescribe).
+            manualService.sembrarParaModulo(guardado);
+            auditar("CREAR", "ModuloCatalogo", String.valueOf(guardado.getId()),
+                    "clave=" + guardado.getClave() + " tipo=" + guardado.getTipo());
+            return ResponseEntity.ok(guardado);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
         }
@@ -277,6 +307,7 @@ public class AdminGestionController {
         if (m == null) return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
         try {
             aplicarCamposModulo(m, body);
+            auditar("ACTUALIZAR", "ModuloCatalogo", String.valueOf(id), "campos=" + body.keySet());
             return ResponseEntity.ok(moduloRepo.save(m));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
@@ -285,8 +316,47 @@ public class AdminGestionController {
 
     @DeleteMapping("/catalogo/modulos/{id}")
     public ResponseEntity<?> eliminarModuloCatalogo(@PathVariable Long id) {
+        auditar("ELIMINAR", "ModuloCatalogo", String.valueOf(id), null);
         moduloRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    // ─── MANUAL DE USO POR MODULO (REQ-AYU-02) ───────────────────
+    // El panel admin edita SOLO este campo (no mezcla con el PUT del modulo):
+    // es un documento con su propio contrato y validacion.
+    @GetMapping("/catalogo/modulos/{id}/manual")
+    public ResponseEntity<?> verManualModulo(@PathVariable Long id) {
+        ModuloCatalogo m = moduloRepo.findById(id).orElse(null);
+        if (m == null) return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("id", m.getId());
+        out.put("clave", m.getClave());
+        out.put("nombre", m.getNombre());
+        out.putAll(manualService.publico(m));
+        return ResponseEntity.ok(out);
+    }
+
+    @PutMapping("/catalogo/modulos/{id}/manual")
+    // NO @Transactional aqui: el servicio ya es transaccional. Un catch en una
+    // tx externa envenena el commit y convierte el 400 esperado en 500 (11.449).
+    public ResponseEntity<?> guardarManualModulo(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            Object raw = body.get("manual");
+            String json;
+            if (raw == null || (raw instanceof String s && s.isBlank())) {
+                json = null; // quitar el manual: el desktop cae al manifest
+            } else if (raw instanceof String s) {
+                json = s;
+            } else {
+                json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(raw);
+            }
+            return ResponseEntity.ok(manualService.guardar(id, json));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "No se pudo guardar el manual: " + e.getMessage()));
+        }
     }
 
     // ─── MEDIOS DE CONTACTO del soporte (REQ-HUB-PLANES-01) ───────
@@ -543,25 +613,71 @@ public class AdminGestionController {
         return ResponseEntity.ok(versionRepo.findAll());
     }
 
+    /** H-03: version semver valida, URL segura y una sola version activa. */
+    private String validarVersionFeed(String version, String url) {
+        if (!VersionSistemaUtil.esValida(version)) {
+            throw new IllegalArgumentException("La version debe tener formato X.Y.Z (ej. 2.0.1)");
+        }
+        if (url != null && !url.isBlank()
+                && !url.startsWith("https://") && !url.startsWith("http://")) {
+            throw new IllegalArgumentException("La URL del instalador debe empezar con http:// o https://");
+        }
+        return version.trim();
+    }
+
     @PostMapping("/versiones")
     public ResponseEntity<?> crearVersion(@RequestBody Map<String, Object> body) {
-        VersionSistema v = new VersionSistema();
-        v.setVersion((String) body.getOrDefault("version", "0.0.0"));
-        v.setUrlDescarga((String) body.getOrDefault("urlDescarga", ""));
-        v.setNotas((String) body.getOrDefault("notas", ""));
-        v.setFecha(LocalDateTime.now());
-        v.setActivo(true);
-        return ResponseEntity.ok(versionRepo.save(v));
+        try {
+            String version = validarVersionFeed(String.valueOf(body.getOrDefault("version", "")),
+                    (String) body.get("urlDescarga"));
+            desactivarOtrasVersiones(null);
+            VersionSistema v = new VersionSistema();
+            v.setVersion(version);
+            v.setUrlDescarga((String) body.getOrDefault("urlDescarga", ""));
+            v.setNotas((String) body.getOrDefault("notas", ""));
+            v.setFecha(LocalDateTime.now());
+            v.setActivo(true);
+            VersionSistema guardada = versionRepo.save(v);
+            auditar("PUBLICAR_VERSION", "VersionSistema", String.valueOf(guardada.getId()),
+                    "version=" + version);
+            return ResponseEntity.ok(guardada);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     @PutMapping("/versiones/{id}")
     public ResponseEntity<?> actualizarVersion(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        VersionSistema v = versionRepo.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
-        if (body.containsKey("version")) v.setVersion((String) body.get("version"));
-        if (body.containsKey("urlDescarga")) v.setUrlDescarga((String) body.get("urlDescarga"));
-        if (body.containsKey("notas")) v.setNotas((String) body.get("notas"));
-        if (body.containsKey("activo")) v.setActivo(Boolean.parseBoolean(String.valueOf(body.get("activo"))));
-        return ResponseEntity.ok(versionRepo.save(v));
+        var existente = versionRepo.findById(id);
+        if (existente.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Version no encontrada"));
+        }
+        VersionSistema v = existente.get();
+        try {
+            String version = body.containsKey("version")
+                    ? validarVersionFeed(String.valueOf(body.get("version")),
+                            body.containsKey("urlDescarga") ? (String) body.get("urlDescarga") : v.getUrlDescarga())
+                    : v.getVersion();
+            v.setVersion(version);
+            if (body.containsKey("urlDescarga")) v.setUrlDescarga((String) body.get("urlDescarga"));
+            if (body.containsKey("notas")) v.setNotas((String) body.get("notas"));
+            if (body.containsKey("activo")) v.setActivo(Boolean.parseBoolean(String.valueOf(body.get("activo"))));
+            if (v.isActivo()) desactivarOtrasVersiones(id);
+            auditar("ACTUALIZAR_VERSION", "VersionSistema", String.valueOf(id), "version=" + v.getVersion());
+            return ResponseEntity.ok(versionRepo.save(v));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
+    }
+
+    /** Solo una activa: el desktop toma la mas reciente y dos activas son ambiguas. */
+    private void desactivarOtrasVersiones(Long idActiva) {
+        for (VersionSistema otra : versionRepo.findAll()) {
+            if (otra.isActivo() && !otra.getId().equals(idActiva)) {
+                otra.setActivo(false);
+                versionRepo.save(otra);
+            }
+        }
     }
 
     @DeleteMapping("/versiones/{id}")
@@ -668,5 +784,11 @@ public class AdminGestionController {
     @GetMapping("/config")
     public ResponseEntity<?> obtenerConfig() {
         return ResponseEntity.ok(Map.of("comision", hubConfigService.getComision()));
+    }
+
+    // ─── AUDITORIA DEL HUB (MEJ-02) ─────────
+    @GetMapping("/auditoria")
+    public ResponseEntity<?> auditoria(@RequestParam(value = "limite", defaultValue = "50") int limite) {
+        return ResponseEntity.ok(auditoria.recientes(limite));
     }
 }

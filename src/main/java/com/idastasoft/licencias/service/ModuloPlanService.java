@@ -49,6 +49,39 @@ public class ModuloPlanService {
     }
 
     /**
+     * H-04: precio PUBLICO canonico de un modulo. Cuando tiene planes propios,
+     * el precio que ve el admin y el que ve la Tienda deben ser el MISMO: se toma
+     * el plan de entrada (el mas barato vigente) y se ignora el campo legacy,
+     * que queda expuesto como {@code precioLegacy} solo para diagnostico.
+     *
+     * <p>Sin planes propios se usa el legacy (el plan sintetizado ya deriva de el),
+     * asi no cambia el contrato de los modulos cargados antes de la fase de planes.</p>
+     */
+    public BigDecimal precioDeEntrada(List<Map<String, Object>> planes,
+                                      ModuloCatalogo modulo,
+                                      BigDecimal legacy) {
+        BigDecimal viejo = legacy == null ? BigDecimal.ZERO : legacy;
+        if (planes == null || planes.isEmpty()) return viejo;
+        List<BigDecimal> valores = new java.util.ArrayList<>();
+        for (Map<String, Object> p : planes) {
+            Object raw = p.get("precioLista") != null ? p.get("precioLista") : p.get("precio");
+            if (raw == null) continue;
+            try {
+                valores.add(new BigDecimal(String.valueOf(raw)));
+            } catch (NumberFormatException ignored) {
+                // Un plan con precio corrupto no define el precio publico.
+            }
+        }
+        if (valores.isEmpty()) return viejo;
+        boolean dePago = modulo != null && modulo.getTipo() == ModuloCatalogo.TipoLicencia.PAGA;
+        java.util.Optional<BigDecimal> positivo = valores.stream()
+                .filter(v -> v.compareTo(BigDecimal.ZERO) > 0)
+                .min(BigDecimal::compareTo);
+        if (dePago && positivo.isPresent()) return positivo.get();
+        return valores.stream().min(BigDecimal::compareTo).orElse(viejo);
+    }
+
+    /**
      * Mapa que consume la Tienda. El descuento de temporada se calcula aqui
      * (nunca se reescribe el precio guardado): asi una oferta se activa/caduca
      * por fecha sin tocar la BD.
@@ -154,10 +187,10 @@ public class ModuloPlanService {
     private void exigirPeriodicidadDelTier(ModuloCatalogo modulo, ModuloPlan.TipoPlan tipo) {
         TipoMoodu tier = modulo == null ? null : TipoMoodu.deClaveCatalogo(modulo.getClave());
         if (tier == null) return;
-        if (!tier.admite(tipo.name())) {
+        if (!tier.admiteAlta(tipo.name())) {
             throw new IllegalArgumentException(
                 "MOODU " + tier.name() + " solo admite "
-                + String.join(" o ", tier.periodicidadesPermitidas())
+                + String.join(" o ", tier.periodicidadesAlta())
                 + " (no " + tipo.name() + ").");
         }
     }

@@ -36,7 +36,8 @@ public class LicenciasServerApplication {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
+                                                   @org.springframework.beans.factory.annotation.Value("${spring.h2.console.enabled:false}") boolean h2Consola) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -58,7 +59,23 @@ public class LicenciasServerApplication {
                 .requestMatchers("/h2-console/**").permitAll()
                 .anyRequest().permitAll()
             )
-            .headers(headers -> headers.frameOptions(fo -> fo.disable())) // H2 console
+            .headers(headers -> {
+                // H-07: CSP endurecida. Los paneles Vue-CDN cargan Vue desde
+                // unpkg y Bootstrap desde jsdelivr; 'unsafe-inline' sigue
+                // necesario porque el createApp vive inline en el HTML.
+                headers.contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; "
+                        // 'unsafe-eval' es requerido por el compilador de
+                        // templates de Vue CDN (vue.global.prod.js). Sin el,
+                        // el panel no monta. Compromiso conocido H-07.
+                        + "script-src 'self' https://unpkg.com 'unsafe-inline' 'unsafe-eval'; "
+                        + "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+                        + "img-src 'self' data: https:; "
+                        + "font-src 'self' data: https://cdn.jsdelivr.net; "
+                        + "connect-src 'self'; object-src 'none'; base-uri 'self'; "
+                        + "frame-ancestors 'none'"));
+                if (h2Consola) headers.frameOptions(fo -> fo.disable()); // solo si se habilito
+            })
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
@@ -97,6 +114,36 @@ public class LicenciasServerApplication {
         FilterRegistrationBean<ForwardedHeaderFilter> bean = new FilterRegistrationBean<>(new ForwardedHeaderFilter());
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return bean;
+    }
+
+    // H-10: Comprape es un modulo OFICIAL del catalogo. Sin esta entrada el
+    // desktop no lo muestra (bloqueo por licencia del core §11.42) y la
+    // tarjeta "Comprape" del panel no tiene a donde apuntar. Se siembra SOLO
+    // si falta; nunca sobrescribe lo que el admin ya edito. El plan GRATUITO
+    // (20 items / 15 dias) se gestiona por licencia (PlanComprape), no aqui.
+    @Bean
+    public CommandLineRunner registrarModuloComprape(
+            com.idastasoft.licencias.repository.ModuloCatalogoRepo repo) {
+        return args -> {
+            try {
+                if (repo.findByClave("comprape") != null) return;
+                var m = new com.idastasoft.licencias.model.ModuloCatalogo();
+                m.setClave("comprape");
+                m.setNombre("Comprape");
+                m.setDescripcion("Tienda mayorista: publica tu mercaderia al por mayor y gestiona tu perfil de comprador.");
+                m.setDesarrollador("idastaSoft");
+                m.setOrigen(com.idastasoft.licencias.model.ModuloCatalogo.OrigenModulo.OFICIAL);
+                m.setTipo(com.idastasoft.licencias.model.ModuloCatalogo.TipoLicencia.GRATIS);
+                m.setPrecio(java.math.BigDecimal.ZERO);
+                m.setVersion("0.1.0");
+                m.setFechaPublicacion(java.time.LocalDate.now());
+                m.setActivo(true);
+                repo.save(m);
+                System.out.println("[Hub] HUB-10: modulo 'comprape' registrado en el catalogo.");
+            } catch (Exception e) {
+                System.err.println("[Hub] HUB-10: no se pudo registrar comprape: " + e.getMessage());
+            }
+        };
     }
 
     // R2 cost-plus: al arrancar, corrige precio de Recepción a 3500 si aún está en 1500 (instalaciones viejas)
@@ -155,6 +202,19 @@ public class LicenciasServerApplication {
                 }
             } catch (Exception e) {
                 System.err.println("[Hub] HUB-11 migration fallida: " + e.getMessage());
+            }
+        };
+    }
+
+    // REQ-AYU-02: siembra la guia de uso de los 6 modulos BETA una sola vez
+    // por clave. Nunca sobrescribe una edicion del admin; al segundo arranque
+    // no hace nada (idempotente por ModuloCatalogo.manual != null).
+    @Bean
+    public CommandLineRunner sembrarManualesFabrica(com.idastasoft.licencias.service.ManualCatalogoService service) {
+        return args -> {
+            int n = service.sembrarFabrica();
+            if (n > 0) {
+                System.out.println("[Hub] Guias de uso sembradas: " + n + " modulos.");
             }
         };
     }

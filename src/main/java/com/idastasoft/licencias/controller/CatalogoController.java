@@ -8,15 +8,18 @@ import com.idastasoft.licencias.repository.ModuloFotoRepo;
 import com.idastasoft.licencias.repository.VersionSistemaRepo;
 import com.idastasoft.licencias.service.ContactoService;
 import com.idastasoft.licencias.service.HubConfigService;
+import com.idastasoft.licencias.service.ManualCatalogoService;
 import com.idastasoft.licencias.service.ModuloPlanService;
 import com.idastasoft.licencias.service.ParametroService;
 import com.idastasoft.licencias.service.ValoracionService;
+import com.idastasoft.licencias.util.VersionSistemaUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -40,12 +43,14 @@ public class CatalogoController {
     private final ContactoService contactoService;
     private final ParametroService parametroService;
     private final ValoracionService valoracionService;
+    private final ManualCatalogoService manualService;
 
     public CatalogoController(ModuloCatalogoRepo moduloRepo, ModuloFotoRepo fotoRepo,
                                VersionSistemaRepo versionRepo, ModuloPlanService planPlanService,
                                HubConfigService hubConfig, ContactoService contactoService,
                                ParametroService parametroService,
-                               ValoracionService valoracionService) {
+                               ValoracionService valoracionService,
+                               ManualCatalogoService manualService) {
         this.moduloRepo = moduloRepo;
         this.fotoRepo = fotoRepo;
         this.versionRepo = versionRepo;
@@ -54,6 +59,7 @@ public class CatalogoController {
         this.contactoService = contactoService;
         this.parametroService = parametroService;
         this.valoracionService = valoracionService;
+        this.manualService = manualService;
     }
 
     private ModuloCatalogo conFotos(ModuloCatalogo m) {
@@ -82,21 +88,33 @@ public class CatalogoController {
         out.put("fechaPublicacion", m.getFechaPublicacion() != null ? m.getFechaPublicacion().toString() : null);
         out.put("origen", m.getOrigen().name());
         out.put("tipo", m.getTipo().name());
-        out.put("precio", m.getPrecio());
+        // H-04: una sola verdad de precio. Si el modulo tiene planes propios,
+        // el campo legacy NO se publica como precio (divergia: almacen 3000 vs
+        // planes 120/1200). Se conserva solo como diagnostico.
+        List<Map<String, Object>> planes = planService.planesPublicos(m.getId(), m);
+        BigDecimal precioPublico = planService.precioDeEntrada(planes, m, m.getPrecio());
+        out.put("precio", precioPublico);
+        out.put("precioLegacy", m.getPrecio());
+        out.put("precioConcuerda", m.getPrecio() != null
+                && m.getPrecio().compareTo(precioPublico) == 0);
         out.put("dispositivosIncluidos", m.dispositivosIncluidosEfectivos());
         boolean oferta = m.descuentoVigente(java.time.LocalDate.now());
         out.put("descuentoPct", m.getDescuentoPct() == null ? 0 : m.getDescuentoPct());
         out.put("descuentoVigente", oferta);
-        out.put("precioFinal", m.precioConDescuento(m.getPrecio(), java.time.LocalDate.now()));
+        out.put("precioFinal", m.precioConDescuento(precioPublico, java.time.LocalDate.now()));
         out.put("linkDescarga", m.getLinkDescarga());
         out.put("linkRepositorio", m.getLinkRepositorio());
         out.put("vigenciaDias", m.getVigenciaDias());
         out.put("activo", m.isActivo());
-        out.put("planes", planService.planesPublicos(m.getId(), m));
+        out.put("planes", planes);
         // Reputacion del modulo (solo lo visible): la Tienda la muestra en la
         // tarjeta para que el usuario vea las opiniones sin abrir el detalle
         // (REQ-HUB-OPINIONES-01). El resumen completo sigue en /api/valoraciones.
         out.put("valoracion", valoracionService.resumen(m.getClave()));
+        // REQ-AYU-02: resumen del manual sin arrastrar el JSON completo en la
+        // lista (las imagenes van en base64 y pesan). El detalle va por
+        // /api/catalogo/modulos/{clave}/manual.
+        out.put("tieneManual", m.tieneManual());
         return out;
     }
 
@@ -118,6 +136,21 @@ public class CatalogoController {
             return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", "Modulo no encontrado"));
         }
         return ResponseEntity.ok(conPlanes(m));
+    }
+
+    /**
+     * Guia de uso de un modulo del catalogo (REQ-AYU-02). Publico: la lee el
+     * desktop con el mismo proxy del Hub que usa la Tienda. Sin manual devuelve
+     * 200 con tieneManual:false y motivo, nunca 500 (el desktop cae al
+     * info.json del modulo, que es su fallback).
+     */
+    @GetMapping("/modulos/{clave}/manual")
+    public ResponseEntity<?> manualModulo(@PathVariable String clave) {
+        try {
+            return ResponseEntity.ok(manualService.porClave(clave));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("ok", false, "mensaje", e.getMessage()));
+        }
     }
 
     /**
@@ -251,11 +284,14 @@ public class CatalogoController {
             return ResponseEntity.ok(Map.of("version", "0.0.0", "urlDescarga", "", "notas", ""));
         }
         VersionSistema v = todas.get(0);
-        return ResponseEntity.ok(Map.of(
-                "version", v.getVersion(),
-                "urlDescarga", v.getUrlDescarga() != null ? v.getUrlDescarga() : "",
-                "notas", v.getNotas() != null ? v.getNotas() : "",
-                "fecha", v.getFecha().toString()
-        ));
+        // H-03: una fila legacy con version vacia/invalida NO se publica como
+        // cadena vacia (el desktop compara semver y fallaba en silencio).
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("version", VersionSistemaUtil.segura(v.getVersion()));
+        out.put("urlDescarga", v.getUrlDescarga() != null ? v.getUrlDescarga() : "");
+        out.put("notas", v.getNotas() != null ? v.getNotas() : "");
+        out.put("fecha", v.getFecha().toString());
+        out.put("versionValida", VersionSistemaUtil.esValida(v.getVersion()));
+        return ResponseEntity.ok(out);
     }
 }

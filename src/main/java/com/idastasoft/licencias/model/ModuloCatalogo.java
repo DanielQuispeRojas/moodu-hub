@@ -103,6 +103,19 @@ public class ModuloCatalogo {
     @Column(length = 1000)
     private String linkRepositorio;
 
+    /**
+     * Guia de uso del modulo (REQ-AYU-02). JSON con el MISMO contrato que ya
+     * consume el visor del desktop: {@code secciones[{titulo,pasos[]}]},
+     * {@code desarrollo} y {@code faq[]}. Las imagenes viajan como data-URL
+     * dentro del JSON porque el disco de Render es efimero (igual que
+     * {@code ModuloFoto.datos}). TEXT sin {@code @Lob}: en Postgres {@code @Lob}
+     * mapea a oid y la lectura fuera de sesion falla con "Unable to access lob
+     * stream" (AGENTS 11.195/11.438). Null = sin manual (el desktop cae al
+     * manual del info.json del modulo).
+     */
+    @Column(columnDefinition = "TEXT")
+    private String manual;
+
     /** Vigencia de la licencia para terceros de paga (dias). 0 = indefinido. */
     @Column(nullable = false)
     private int vigenciaDias = 0;
@@ -173,6 +186,10 @@ public class ModuloCatalogo {
     public void setLinkDescarga(String linkDescarga) { this.linkDescarga = linkDescarga; }
     public String getLinkRepositorio() { return linkRepositorio; }
     public void setLinkRepositorio(String linkRepositorio) { this.linkRepositorio = linkRepositorio; }
+    public String getManual() { return manual; }
+    public void setManual(String manual) { this.manual = manual; }
+    /** El manual existe solo si hay contenido parseable (no cadena vacia). */
+    public boolean tieneManual() { return manual != null && !manual.isBlank(); }
     public int getVigenciaDias() { return vigenciaDias; }
     public void setVigenciaDias(int vigenciaDias) { this.vigenciaDias = vigenciaDias; }
     public boolean isActivo() { return activo; }

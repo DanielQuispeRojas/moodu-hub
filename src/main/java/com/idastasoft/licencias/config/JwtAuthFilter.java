@@ -47,7 +47,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         //crear modulo con fechaPublicacion vacia parecia fallo de sesion).
         final String username;
         try {
-            if (!jwtService.tokenValido(token)) {
+            if (!jwtService.tokenValido(token) || !jwtService.esAdmin(token)) {
                 responderNoAutorizado(response);
                 return;
             }

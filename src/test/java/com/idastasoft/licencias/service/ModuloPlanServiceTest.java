@@ -312,4 +312,36 @@ class ModuloPlanServiceTest {
         assertEquals(Boolean.FALSE, sinOferta.get("descuentoVigente"));
         assertEquals(0, new BigDecimal("1500.00").compareTo((BigDecimal) sinOferta.get("precio")));
     }
+
+    @Test
+    @DisplayName("H-04: con planes propios manda el plan de entrada, no el precio legacy")
+    void precioDeEntrada_conPlanes_ignoraLegacy() {
+        List<Map<String, Object>> planes = List.of(
+                Map.of("tipo", "MENSUAL", "precio", new BigDecimal("120"), "precioLista", new BigDecimal("120")),
+                Map.of("tipo", "ANUAL", "precio", new BigDecimal("1200"), "precioLista", new BigDecimal("1200")));
+        ModuloCatalogo almacen = modulo("almacen", ModuloCatalogo.TipoLicencia.PAGA,
+                new BigDecimal("3000"), 30);
+        assertEquals(0, new BigDecimal("120").compareTo(
+                service.precioDeEntrada(planes, almacen, almacen.getPrecio())));
+    }
+
+    @Test
+    @DisplayName("H-04: sin planes propios se conserva el precio legacy (compatibilidad)")
+    void precioDeEntrada_sinPlanes_usoLegacy() {
+        ModuloCatalogo recepcion = modulo("recepcion", ModuloCatalogo.TipoLicencia.PAGA,
+                new BigDecimal("3500"), 0);
+        assertEquals(0, new BigDecimal("3500").compareTo(
+                service.precioDeEntrada(List.of(), recepcion, recepcion.getPrecio())));
+    }
+
+    @Test
+    @DisplayName("H-04: modulo GRATIS con plan 0 manda 0 aunque haya legacy")
+    void precioDeEntrada_gratis() {
+        List<Map<String, Object>> planes = List.of(
+                Map.of("tipo", "PERMANENTE", "precio", BigDecimal.ZERO, "precioLista", BigDecimal.ZERO));
+        ModuloCatalogo votaciones = modulo("votaciones", ModuloCatalogo.TipoLicencia.GRATIS,
+                BigDecimal.ZERO, 0);
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                service.precioDeEntrada(planes, votaciones, votaciones.getPrecio())));
+    }
 }

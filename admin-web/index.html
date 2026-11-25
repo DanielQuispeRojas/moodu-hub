@@ -14,6 +14,18 @@
     .badge { font-size:.72rem; }
     .chip-row { display:flex; flex-wrap:wrap; gap:.4rem; }
     .form-hint { font-size:.72rem; color:#9ca3af; }
+    /* H-13: aviso flotante por equipo, fijo abajo-derecha sobre el footer. */
+    .hub-toast { position:fixed; right:16px; bottom:16px; z-index:2000; max-width:min(420px,calc(100vw - 32px));
+      display:flex; align-items:center; gap:.5rem; padding:.6rem .8rem; border-radius:.5rem;
+      box-shadow:0 6px 20px rgba(0,0,0,.18); font-size:.82rem; }
+    .hub-toast.ok { background:#0f5132; color:#fff; }
+    .hub-toast.error { background:#842029; color:#fff; }
+    /* H-23: en movil las 7 pestañas NO se apilan: scroll horizontal sin barra. */
+    @media (max-width: 640px) {
+      #tabs { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+      #tabs::-webkit-scrollbar { display: none; }
+      #tabs .nav-item { flex-shrink: 0; }
+    }
     /* Miniatura de la portada del slider de Soporte */
     .portada-mini { width:72px; height:44px; object-fit:cover; border-radius:6px; background:#f1f3f5; }
     .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; }
@@ -64,10 +76,42 @@
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='val'}" @click="tab='val'; cargarValoraciones()">Valoraciones</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='temas'}" @click="tab='temas'; cargarTemas()">Temas</button></li>
       <li class="nav-item"><button class="nav-link" :class="{active: tab==='cfg'}" @click="tab='cfg'; cargarContacto(); cargarParametros()">Soporte</button></li>
+      <li class="nav-item"><button class="nav-link" :class="{active: tab==='aud'}" @click="tab='aud'; cargarAuditoria()">Auditoria</button></li>
     </ul>
 
     <!-- ============ LICENCIAS ============ -->
     <div v-if="tab==='lic'">
+      <!-- MEJ-01: salud comercial, leida del catalogo PUBLICO (una sola verdad) -->
+      <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Salud comercial</h6>
+          <button class="btn btn-sm btn-outline-secondary" @click="cargar">Actualizar</button>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm" :class="salud.precioDivergente ? 'btn-outline-danger' : 'btn-outline-success'"
+            title="Precio legacy distinto del plan vigente (lo que ve la Tienda)" @click="tab='cat'">
+            Precio divergente: {{ salud.precioDivergente }}
+          </button>
+          <button class="btn btn-sm" :class="salud.sinPrecio ? 'btn-outline-danger' : 'btn-outline-success'"
+            title="Modulo de pago sin plan con precio" @click="tab='cat'">
+            Sin precio: {{ salud.sinPrecio }}
+          </button>
+          <button class="btn btn-sm" :class="salud.sinGuia ? 'btn-outline-warning' : 'btn-outline-success'"
+            title="Modulo sin guia de uso publicada" @click="tab='cat'">
+            Sin guia: {{ salud.sinGuia }}
+          </button>
+          <button class="btn btn-sm" :class="salud.sinFoto ? 'btn-outline-warning' : 'btn-outline-success'"
+            title="Modulo sin fotos en la Tienda" @click="tab='cat'">
+            Sin fotos: {{ salud.sinFoto }}
+          </button>
+          <button class="btn btn-sm" :class="salud.packsSinPrecio ? 'btn-outline-warning' : 'btn-outline-success'"
+            title="Pack de dispositivos sin tarifa (no se ofrece)" @click="tab='disp'">
+            Packs sin tarifa: {{ salud.packsSinPrecio }}
+          </button>
+        </div>
+        <div class="form-hint mt-2">Se lee del catalogo publico: es lo que ve el cliente, no lo que dice el formulario.</div>
+      </div>
+
       <div class="card p-3 mb-3">
         <h6 class="mb-2">Nueva licencia</h6>
         <div class="section-title">Datos del cliente</div>
@@ -143,7 +187,6 @@
                     {{ resumenDe(l.correo) ? resumenDe(l.correo).tipoMoodu : '—' }}
                   </span>
                 </td>
-                <td><code>{{ l.claveActivacion }}</code></td>
                 <td>
                   <span v-if="!modsDe(l).length" class="text-muted small">ninguno</span>
                   <span v-for="m in modsDe(l)" :key="m.clave" class="badge me-1"
@@ -427,7 +470,7 @@
                 </div>
                 <div class="col-3">
                   <label class="form-label small mb-0">Precio (S/)</label>
-                  <input v-model.number="paqEditando.precio" type="number" min="0" class="form-control form-control-sm" />
+                  <input v-model.number="paqEditando.precio" type="number" min="0" step="0.01" class="form-control form-control-sm" />
                 </div>
                 <div class="col-3 d-flex align-items-end">
                   <div class="form-check">
@@ -692,7 +735,7 @@
           </div>
           <div class="col-3">
             <label class="form-label small mb-0">Precio</label>
-            <input v-model.number="nuevoM.precio" type="number" min="0" class="form-control form-control-sm" placeholder="0.00" :disabled="nuevoM.tipo==='GRATIS'" />
+            <input v-model.number="nuevoM.precio" type="number" min="0" step="0.01" class="form-control form-control-sm" placeholder="0.00" :disabled="nuevoM.tipo==='GRATIS'" />
           </div>
           <div class="col-3">
             <label class="form-label small mb-0">Version</label>
@@ -742,15 +785,20 @@
       <div class="card p-3">
         <h6 class="mb-2">Módulos del catálogo</h6>
         <table class="table table-sm table-striped align-middle mb-0">
-          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Fotos</th><th>Valoración</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Clave</th><th>Nombre</th><th>Origen</th><th>Tipo</th><th>Precio</th><th>Versión</th><th>Guía</th><th>Fotos</th><th>Valoración</th><th>Activo</th><th></th></tr></thead>
           <tbody>
             <tr v-for="m in catalogo" :key="m.id">
               <td><code>{{ m.clave }}</code></td>
               <td>{{ m.nombre }}</td>
               <td>{{ m.origen }}</td>
               <td>{{ m.tipo }}</td>
-              <td>{{ m.tipo === 'PAGA' ? '$' + m.precio : 'Gratis' }}</td>
+              <td>{{ m.tipo === 'PAGA' ? 'S/ ' + m.precio : 'Gratis' }}</td>
               <td>{{ m.version }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-info" @click="abrirManual(m)" :title="'Guía de uso de ' + m.nombre">
+                  {{ m.tieneManual ? 'Guía' : 'Sin guía' }}
+                </button>
+              </td>
               <td>
                 <button class="btn btn-sm btn-outline-secondary" @click="abrirFotos(m)" :title="`Fotos de ${m.nombre} (${(m.fotoIds || []).length}/10)`">
                   Fotos {{ (m.fotoIds || []).length }}/10
@@ -802,7 +850,7 @@
                 </div>
                 <div class="col-3">
                   <label class="form-label small mb-0">Precio</label>
-                  <input v-model.number="modEditando.precio" type="number" min="0" class="form-control form-control-sm" :disabled="modEditando.tipo==='GRATIS'" />
+                  <input v-model.number="modEditando.precio" type="number" min="0" step="0.01" class="form-control form-control-sm" :disabled="modEditando.tipo==='GRATIS' || planesModulo.length > 0" :title="planesModulo.length > 0 ? 'Con planes propios, edite el precio en la tabla de planes (es lo que ve la Tienda)' : 'Precio del plan unico'" />
                 </div>
                 <div class="col-3">
                   <label class="form-label small mb-0">Desarrollador</label>
@@ -883,6 +931,81 @@
             <div class="modal-footer">
               <button class="btn btn-secondary btn-sm" @click="modEditando=null">Cancelar</button>
               <button class="btn btn-primary btn-sm" @click="guardarMod">Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL MANUAL DE USO DEL MODULO (REQ-AYU-02) -->
+      <div v-if="manualModulo" class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.5)">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h6 class="modal-title mb-0">Manual de uso · {{ manualModulo.nombre }}</h6>
+              <button type="button" class="btn-close" @click="cerrarManual" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body" style="max-height:70vh;overflow:auto;">
+              <div v-if="manualMsg" class="alert py-1 small" :class="manualOk ? 'alert-success' : 'alert-danger'">{{ manualMsg }}</div>
+              <div class="row g-2">
+                <div class="col-md-6"><label class="form-label small mb-0">Título</label><input class="form-control form-control-sm" v-model="manualForm.titulo" /></div>
+                <div class="col-md-3"><label class="form-label small mb-0">Actualizado</label><input class="form-control form-control-sm" v-model="manualForm.actualizado" /></div>
+                <div class="col-md-3"><label class="form-label small mb-0">Capa</label><input class="form-control form-control-sm" v-model="manualForm.capa" /></div>
+                <div class="col-12"><label class="form-label small mb-0">Resumen</label><textarea class="form-control form-control-sm" rows="2" v-model="manualForm.resumen"></textarea></div>
+                <div class="col-12"><label class="form-label small mb-0">Inicio</label><textarea class="form-control form-control-sm" rows="2" v-model="manualForm.inicio"></textarea></div>
+              </div>
+              <hr class="my-2" />
+              <div v-for="(sec, si) in manualForm.secciones" :key="si" class="card p-2 mb-2">
+                <div class="d-flex gap-2">
+                  <input class="form-control form-control-sm" v-model="sec.titulo" placeholder="Título de la sección" />
+                  <button type="button" class="btn btn-sm btn-outline-danger" @click="quitarSeccion(si)">Quitar</button>
+                </div>
+                <div v-for="(item, ii) in sec.items" :key="ii" class="border-top pt-2 mt-2">
+                  <div class="d-flex gap-2">
+                    <input class="form-control form-control-sm" v-model="item.titulo" placeholder="Título del item" />
+                    <button type="button" class="btn btn-sm btn-outline-danger" @click="quitarItem(si, ii)">Quitar</button>
+                  </div>
+                  <input class="form-control form-control-sm mt-1" v-model="item.objetivo" placeholder="Objetivo" />
+                  <div v-for="(paso, pi) in item.pasos" :key="pi" class="row g-1 mt-1">
+                    <div class="col-md-4"><input class="form-control form-control-sm" v-model="paso.t" placeholder="Título del paso" /></div>
+                    <div class="col-md-7"><input class="form-control form-control-sm" v-model="paso.d" placeholder="Detalle del paso" /></div>
+                    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" @click="quitarPaso(si, ii, pi)" aria-label="Quitar paso">×</button></div>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary mt-1" @click="agregarPaso(si, ii)">+ Paso</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @click="agregarItem(si)">+ Item</button>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @click="agregarSeccion">+ Sección</button>
+              <hr class="my-2" />
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label small mb-0">Imagen principal</label>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-control form-control-sm" @change="subirImagenManual($event, 'principal')" />
+                  <img v-if="manualForm.imagenes.principal" :src="manualForm.imagenes.principal" alt="Vista previa" style="max-height:90px;max-width:100%;" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small mb-0">Diagrama de flujo</label>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-control form-control-sm" @change="subirImagenManual($event, 'flujo')" />
+                  <img v-if="manualForm.imagenes.flujo" :src="manualForm.imagenes.flujo" alt="Vista previa" style="max-height:90px;max-width:100%;" />
+                </div>
+              </div>
+              <hr class="my-2" />
+              <div class="row g-2">
+                <div class="col-12"><label class="form-label small mb-0">Desarrollo (nota interna, no visible para el usuario)</label><textarea class="form-control form-control-sm" rows="2" v-model="manualForm.desarrolloNota"></textarea></div>
+                <div class="col-md-6"><label class="form-label small mb-0">Eventos que emite (separados por coma)</label><input class="form-control form-control-sm" v-model="manualForm.eventosTexto" /></div>
+                <div class="col-md-6"><label class="form-label small mb-0">Flujos (separados por coma)</label><input class="form-control form-control-sm" v-model="manualForm.flujosTexto" /></div>
+              </div>
+              <hr class="my-2" />
+              <div v-for="(q, qi) in manualForm.preguntas" :key="qi" class="row g-1 mb-1">
+                <div class="col-md-5"><input class="form-control form-control-sm" v-model="q.p" placeholder="Pregunta" /></div>
+                <div class="col-md-6"><input class="form-control form-control-sm" v-model="q.r" placeholder="Respuesta" /></div>
+                <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" @click="quitarPregunta(qi)" aria-label="Quitar pregunta">×</button></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @click="agregarPregunta">+ Pregunta</button>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary btn-sm" @click="cerrarManual">Cancelar</button>
+              <button type="button" class="btn btn-outline-danger btn-sm" @click="quitarManual">Quitar guía</button>
+              <button type="button" class="btn btn-primary btn-sm" @click="guardarManual" :disabled="manualGuardando">{{ manualGuardando ? 'Guardando…' : 'Guardar guía' }}</button>
             </div>
           </div>
         </div>
@@ -1138,7 +1261,7 @@
         <h6 class="mb-1">Medios de contacto del soporte</h6>
         <div class="form-hint mb-3">
           La Tienda de MOODU los muestra en el modal "Mejorar Plan", que hoy es manual
-          (el usuario escribe al soporte y tu le activas o melhora la licencia).
+          (el usuario escribe al soporte y tu la activas o mejoras la licencia).
           Lo que dejas vacio no se muestra al cliente.
         </div>
         <div v-if="contactoMsg" class="alert" :class="contactoOk ? 'alert-success' : 'alert-danger'">{{ contactoMsg }}</div>
@@ -1383,13 +1506,75 @@
           </button>
           <button class="btn btn-outline-secondary btn-sm ms-1" @click="cargarParametros">Recargar</button>
         </div>
+        <!-- H-19: factor anual del modulo (el precio ANUAL se deriva, no se escribe a mano) -->
+        <div class="mt-3 pt-3 border-top">
+          <div class="section-title">Factor del precio anual</div>
+          <div class="form-hint mb-2">Al guardar el precio MENSUAL de un modulo, el ANUAL se calcula solo (mensual × factor). Los planes ANUAL ya guardados no se reescriben.</div>
+          <div class="d-flex gap-2 align-items-end">
+            <div>
+              <label class="form-label small mb-0" for="pm-anual">Factor (1–24)</label>
+              <input id="pm-anual" v-model.number="anualFactor" type="number" min="1" max="24" class="form-control form-control-sm" style="max-width:120px" />
+            </div>
+            <button class="btn btn-outline-primary btn-sm" :disabled="guardandoFactor" @click="guardarFactor">
+              <span v-if="guardandoFactor" class="spinner-border spinner-border-sm me-1"></span>Guardar factor
+            </button>
+          </div>
+        </div>
+        <!-- MEJ-08: control de Términos (REQ-LEGAL-01). Se edita con Guardar parametros. -->
+        <div class="mt-3 pt-3 border-top">
+          <div class="section-title">Terminos y condiciones</div>
+          <div class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label small mb-0" for="pm-term-ver">Version</label>
+              <input id="pm-term-ver" v-model="paramForm.TERMINOS_VERSION" class="form-control form-control-sm" placeholder="1.0" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-0" for="pm-term-rev">Ultima revision</label>
+              <input id="pm-term-rev" v-model="paramForm.TERMINOS_REVISION" type="date" class="form-control form-control-sm" />
+            </div>
+          </div>
+          <div class="form-hint mt-2">Todo cambio grande, de privacidad, de servicio externo o de estandar obliga a revisar los Terminos en la misma sesion (REQ-LEGAL-01). Version y revision se guardan con "Guardar parametros".</div>
+        </div>
       </div>
     </div>
+
+      <!-- ============ AUDITORIA (MEJ-02) ============ -->
+      <div v-if="tab==='aud'">
+        <div class="card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Auditoria del Hub</h6>
+            <button class="btn btn-sm btn-outline-secondary" @click="cargarAuditoria">Recargar</button>
+          </div>
+          <div class="form-hint mb-2">Decisiones administrativas (licencias, modulos, planes, versiones). Nunca se guardan claves ni contraseñas.</div>
+          <div v-if="!auditoria.length" class="text-muted small py-2">Sin registros todavia.</div>
+          <div v-else class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+              <thead><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Entidad</th><th>Detalle</th></tr></thead>
+              <tbody>
+                <tr v-for="a in auditoria" :key="a.id">
+                  <td class="small">{{ a.fecha }}</td>
+                  <td>{{ a.usuario }}</td>
+                  <td><span class="badge text-bg-secondary">{{ a.accion }}</span></td>
+                  <td>{{ a.entidad }} <code v-if="a.entidadId">#{{ a.entidadId }}</code></td>
+                  <td class="small text-muted">{{ a.detalle || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- H-13: aviso flotante unico (antes cada seccion tenia un texto tenue). -->
+      <div v-if="aviso.msg" class="hub-toast" :class="aviso.ok ? 'ok' : 'error'" role="status" aria-live="polite">
+        <i class="bi" :class="aviso.ok ? 'bi-check-circle' : 'bi-exclamation-triangle'"></i>
+        <span>{{ aviso.msg }}</span>
+        <button type="button" class="btn-close btn-close-white ms-2" aria-label="Cerrar aviso" @click="aviso.msg=''"></button>
+      </div>
   </div>
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, onMounted } = Vue
+const { createApp, ref, reactive, computed, onMounted, watch } = Vue
 // Same-origin cuando el Hub sirve este dashboard; fallback al Hub desplegado
 // si se abre como archivo local (file:// -> window.location.origin = "null").
 const API = window.location.origin && window.location.origin !== 'null'
@@ -1425,7 +1610,9 @@ createApp({
     const modEditando = ref(null)
     const paqEditando = ref(null)
     const catalogo = ref([])
+    const catalogoPublico = ref([])
     const valoraciones = ref([])
+    const auditoria = ref([])
     const temas = ref([])
     const temaEditando = ref(null)
     const temaVer = ref(null)
@@ -1433,6 +1620,19 @@ createApp({
     const nuevoT = reactive(defaultTema())
     const valDestino = ref('')
     const valModulos = reactive({}) // clave -> {prom, total}
+
+    // MEJ-01: una sola fuente (catalogo publico) para no diagnosticar a ojo.
+    const salud = computed(() => {
+      const mods = catalogoPublico.value || []
+      return {
+        precioDivergente: mods.filter(m => m.precioConcuerda === false).length,
+        sinPrecio: mods.filter(m => m.tipo === 'PAGA'
+          && !(m.planes || []).some(p => Number(p.precio) > 0)).length,
+        sinGuia: mods.filter(m => !m.tieneManual).length,
+        sinFoto: mods.filter(m => !(m.fotoIds || []).length).length,
+        packsSinPrecio: (packs.value || []).filter(p => !planesDePack(p).length).length
+      }
+    })
 
     //Sesion por INACTIVIDAD (30 min): cualquier clic/tecla reinicia el conteo.
     //El JWT de 24h queda solo como red de seguridad del backend.
@@ -1666,7 +1866,7 @@ createApp({
     }
 
     // ─── PARAMETROS del Hub: URL publica, Comprape y aviso de mudanza ───
-    const PARAM_VACIO = { HUB_URL:'', COMPRAPE_URL:'', MAX_ANIOS_LICENCIA:'3', NORMATIVAS_REPO_URL:'', NORMATIVAS_MANIFEST_URL:'', NORMATIVAS_VERSION:'', MUDANZA_ACTIVA:'', MUDANZA_URL_NUEVA:'', MUDANZA_FECHA_LIMITE:'', MUDANZA_MENSAJE:'' }
+    const PARAM_VACIO = { HUB_URL:'', COMPRAPE_URL:'', MAX_ANIOS_LICENCIA:'3', NORMATIVAS_REPO_URL:'', NORMATIVAS_MANIFEST_URL:'', NORMATIVAS_VERSION:'', TERMINOS_VERSION:'1.0', TERMINOS_REVISION:'2026-11-25', MUDANZA_ACTIVA:'', MUDANZA_URL_NUEVA:'', MUDANZA_FECHA_LIMITE:'', MUDANZA_MENSAJE:'' }
     // HUB-11: una sola fuente para la etiqueta del plan largo (sirve aunque el
     // Hub aun no tenga el parametro guardado).
     function numeroAnios() {
@@ -1678,6 +1878,39 @@ createApp({
     const paramMsg = ref('')
     const paramOk = ref(true)
     const guardandoParam = ref(false)
+    const anualFactor = ref(10)
+    const guardandoFactor = ref(false)
+
+    async function cargarFactor() {
+      if (!token.value) return
+      try {
+        const d = await fetch(API + '/api/admin/gestion/config/anual-factor', { headers: authSolo() }).then(r => r.json())
+        if (d && Number.isFinite(Number(d.factor))) anualFactor.value = Number(d.factor)
+      } catch (e) { /* el default 10 ya es seguro */ }
+    }
+    async function guardarFactor() {
+      guardandoFactor.value = true
+      try {
+        const r = await fetch(API + '/api/admin/gestion/config/anual-factor', {
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ factor: anualFactor.value })
+        })
+        const d = await r.json().catch(() => ({}))
+        paramOk.value = r.ok && d.ok !== false
+        paramMsg.value = d.mensaje || (paramOk.value ? 'Factor guardado.' : 'No se pudo guardar el factor.')
+        if (Number.isFinite(Number(d.factor))) anualFactor.value = Number(d.factor)
+      } catch (e) {
+        paramOk.value = false
+        paramMsg.value = 'No se pudo guardar el factor.'
+      } finally { guardandoFactor.value = false }
+    }
+
+    async function cargarAuditoria() {
+      if (!token.value) return
+      try {
+        const d = await fetch(API + '/api/admin/gestion/auditoria?limite=100', { headers: authSolo() }).then(r => r.json())
+        auditoria.value = Array.isArray(d) ? d : []
+      } catch (e) { auditoria.value = [] }
+    }
 
     async function cargarParametros() {
       if (!token.value) return
@@ -1688,6 +1921,7 @@ createApp({
         const p = (d && d.parametros) || {}
         for (const k of Object.keys(PARAM_VACIO)) paramForm[k] = p[k] || ''
         paramBool.MUDANZA_ACTIVA = String(p.MUDANZA_ACTIVA || '').toLowerCase() === 'true'
+        await cargarFactor()
       } catch (e) {
         paramOk.value = false
         paramMsg.value = 'No se pudieron cargar los parametros.'
@@ -1751,16 +1985,18 @@ createApp({
 
     async function cargar() {
       try {
-        const [l, p, c, pk, rd] = await Promise.all([
+        const [l, p, c, pk, rd, cp] = await Promise.all([
           fetch(API + '/api/admin/gestion/licencias', { headers: authHeaders() }).then(r=>r.json()),
           fetch(API + '/api/admin/gestion/paquetes', { headers: authHeaders() }).then(r=>r.json()),
           fetch(API + '/api/admin/gestion/catalogo/modulos', { headers: authHeaders() }).then(r=>r.json()),
           fetch(API + '/api/admin/gestion/dispositivos/packs', { headers: authHeaders() }).then(r=>r.json()),
-          fetch(API + '/api/admin/gestion/dispositivos/resumen', { headers: authHeaders() }).then(r=>r.json())
+          fetch(API + '/api/admin/gestion/dispositivos/resumen', { headers: authHeaders() }).then(r=>r.json()),
+          fetch(API + '/api/catalogo/modulos').then(r=>r.json())
         ])
         licencias.value = Array.isArray(l) ? l : []
         paquetes.value = Array.isArray(p) ? p : []
         catalogo.value = Array.isArray(c) ? c : []
+        catalogoPublico.value = Array.isArray(cp) ? cp : []
         packs.value = (pk && Array.isArray(pk.packs)) ? pk.packs : []
         resumenDisp.value = (rd && Array.isArray(rd.licencias)) ? rd.licencias : []
         if (!Array.isArray(l)) {
@@ -2004,6 +2240,149 @@ createApp({
     const fotoMsg = ref('')
     const fotoOk = ref(true)
     function authSolo() { return { 'Authorization': 'Bearer ' + token.value } }
+
+    // ─── MANUAL DE USO POR MODULO (REQ-AYU-02) ───────────────────────
+    // Datos en texto y un solo modal con el formulario (REQ-UI-SIMPLE-01).
+    // El manual viaja como JSON con el contrato que ya lee ManualDetalle.
+    const manualModulo = ref(null)
+    const manualForm = reactive({
+      titulo: '', resumen: '', inicio: '', actualizado: '', icono: '', capa: '',
+      secciones: [], desarrolloNota: '', eventosTexto: '', flujosTexto: '',
+      imagenes: { principal: '', flujo: '' }, preguntas: []
+    })
+    const manualMsg = ref('')
+    const manualOk = ref(true)
+    const manualGuardando = ref(false)
+
+    function seccionVacia() { return { titulo: '', items: [itemVacio()] } }
+    function itemVacio() { return { titulo: '', objetivo: '', pasos: [{ t: '', d: '' }] } }
+    function manualFormVacio() {
+      return {
+        titulo: '', resumen: '', inicio: '', actualizado: new Date().toISOString().slice(0, 10),
+        icono: '', capa: '', secciones: [seccionVacia()], desarrolloNota: '',
+        eventosTexto: '', flujosTexto: '', imagenes: { principal: '', flujo: '' },
+        preguntas: [{ p: '', r: '' }]
+      }
+    }
+    function cargarFormManual(m) {
+      const limpio = manualFormVacio()
+      if (!m || typeof m !== 'object') return limpio
+      const secciones = Array.isArray(m.secciones) && m.secciones.length
+        ? m.secciones.map(s => ({
+            titulo: s.titulo || '',
+            items: (Array.isArray(s.items) && s.items.length ? s.items : [itemVacio()]).map(i => ({
+              titulo: i.titulo || '', objetivo: i.objetivo || '',
+              pasos: (Array.isArray(i.pasos) && i.pasos.length ? i.pasos : [{ t: '', d: '' }])
+                .map(p => ({ t: p.t || '', d: p.d || '', img: p.img || '', pie: p.pie || '', foco: p.foco }))
+            }))
+          })) : limpio.secciones
+      const desarrolloTxt = (m.desarrollo && typeof m.desarrollo === 'object') ? m.desarrollo : {}
+      return {
+        titulo: m.titulo || '', resumen: m.resumen || '', inicio: m.inicio || '',
+        actualizado: m.actualizado || limpio.actualizado, icono: m.icono || '', capa: m.capa || '',
+        secciones,
+        desarrolloNota: desarrolloTxt.nota || '',
+        eventosTexto: (Array.isArray(desarrolloTxt.eventosEmision) ? desarrolloTxt.eventosEmision : []).join(', '),
+        flujosTexto: (Array.isArray(desarrolloTxt.flujos) ? desarrolloTxt.flujos : []).join(', '),
+        imagenes: { principal: (m.imagenes && m.imagenes.principal) || '', flujo: (m.imagenes && m.imagenes.flujo) || '' },
+        preguntas: (Array.isArray(m.preguntas) && m.preguntas.length ? m.preguntas : limpio.preguntas)
+          .map(q => ({ p: q.p || '', r: q.r || '' }))
+      }
+    }
+    function asignarFormManual(destino, origen) {
+      Object.keys(destino).forEach(k => { delete destino[k] })
+      Object.assign(destino, origen)
+    }
+    async function abrirManual(m) {
+      manualModulo.value = m
+      manualMsg.value = ''
+      manualOk.value = true
+      asignarFormManual(manualForm, manualFormVacio())
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${m.id}/manual`, { headers: authHeaders() })
+        const d = await r.json().catch(() => ({}))
+        if (!d.ok && !d.tieneManual) { manualMsg.value = d.mensaje || 'No se pudo leer la guía'; manualOk.value = false; return }
+        if (d.manual) asignarFormManual(manualForm, cargarFormManual(d.manual))
+      } catch (e) {
+        manualMsg.value = 'No se pudo conectar con el Hub'
+        manualOk.value = false
+      }
+    }
+    function cerrarManual() { manualModulo.value = null }
+    function agregarSeccion() { manualForm.secciones.push(seccionVacia()) }
+    function quitarSeccion(i) { manualForm.secciones.splice(i, 1) }
+    function agregarItem(i) { manualForm.secciones[i].items.push(itemVacio()) }
+    function quitarItem(i, j) { manualForm.secciones[i].items.splice(j, 1) }
+    function agregarPaso(i, j) { manualForm.secciones[i].items[j].pasos.push({ t: '', d: '' }) }
+    function quitarPaso(i, j, k) { manualForm.secciones[i].items[j].pasos.splice(k, 1) }
+    function agregarPregunta() { manualForm.preguntas.push({ p: '', r: '' }) }
+    function quitarPregunta(i) { manualForm.preguntas.splice(i, 1) }
+    function listaCsv(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean) }
+    function subirImagenManual(e, clave) {
+      const f = e.target.files && e.target.files[0]
+      if (!f) return
+      if (f.size > 1024 * 1024) { manualMsg.value = 'La imagen debe pesar menos de 1 MB'; manualOk.value = false; return }
+      const lector = new FileReader()
+      lector.onload = () => { manualForm.imagenes[clave] = String(lector.result || ''); manualMsg.value = '' }
+      lector.readAsDataURL(f)
+    }
+    function manualDesdeForm() {
+      return {
+        version: '1.0', actualizado: manualForm.actualizado || new Date().toISOString().slice(0, 10),
+        titulo: manualForm.titulo, resumen: manualForm.resumen, inicio: manualForm.inicio,
+        icono: manualForm.icono, capa: manualForm.capa,
+        secciones: manualForm.secciones.map(s => ({
+          titulo: s.titulo, items: s.items.map(i => ({
+            titulo: i.titulo, objetivo: i.objetivo,
+            pasos: i.pasos.map(p => {
+              const paso = { t: p.t, d: p.d }
+              if (p.img) paso.img = p.img
+              if (p.pie) paso.pie = p.pie
+              if (p.foco) paso.foco = p.foco
+              return paso
+            })
+          }))
+        })),
+        desarrollo: { nota: manualForm.desarrolloNota, eventosEmision: listaCsv(manualForm.eventosTexto), flujos: listaCsv(manualForm.flujosTexto) },
+        preguntas: manualForm.preguntas.filter(q => q.p && q.r),
+        imagenes: { principal: manualForm.imagenes.principal, flujo: manualForm.imagenes.flujo }
+      }
+    }
+    async function guardarManual() {
+      if (!manualModulo.value) return
+      manualGuardando.value = true
+      manualMsg.value = ''
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${manualModulo.value.id}/manual`, {
+          method: 'PUT', headers: authHeaders(),
+          body: JSON.stringify({ manual: JSON.stringify(manualDesdeForm()) })
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) { manualMsg.value = d.mensaje || 'No se pudo guardar la guía'; manualOk.value = false; return }
+        manualMsg.value = 'Guía guardada. Ya está disponible en el desktop.'
+        manualOk.value = true
+        await cargar()
+      } catch (e) {
+        manualMsg.value = 'No se pudo conectar con el Hub'
+        manualOk.value = false
+      } finally { manualGuardando.value = false }
+    }
+    async function quitarManual() {
+      if (!manualModulo.value || !confirm('¿Quitar la guía de uso de este módulo? El desktop usará la del info.json.')) return
+      manualGuardando.value = true
+      try {
+        const r = await fetch(API + `/api/admin/gestion/catalogo/modulos/${manualModulo.value.id}/manual`, {
+          method: 'PUT', headers: authHeaders(),
+          body: JSON.stringify({ manual: null })
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || d.ok === false) { manualMsg.value = d.mensaje || 'No se pudo quitar la guía'; manualOk.value = false; return }
+        await cargar()
+        cerrarManual()
+      } catch (e) { manualMsg.value = 'No se pudo conectar con el Hub'; manualOk.value = false }
+      finally { manualGuardando.value = false }
+    }
+
     function fotoUrl(m, f) {
       return `${API}/api/catalogo/modulos/${encodeURIComponent(m.clave)}/fotos/${f.id}`
     }
@@ -2529,10 +2908,40 @@ createApp({
       cargarValoraciones()
     }
 
+    // H-13: un solo aviso flotante. Los mensajes locales siguen existiendo
+    // (por compatibilidad) pero se reflejan aqui con peso visual suficiente.
+    const aviso = ref({ msg:'', ok:true })
+    let timerAviso = null
+    function ponerAviso(msg, ok) {
+      if (!msg) return
+      aviso.value = { msg, ok: ok !== false }
+      if (timerAviso) clearTimeout(timerAviso)
+      timerAviso = setTimeout(() => { aviso.value.msg = '' }, 6000)
+    }
+    watch([temaMsg, contactoMsg, paramMsg, manualMsg, fotoMsg, comprapeMsg], () => {
+      const pares = [
+        [temaMsg.value, true], [contactoMsg.value, contactoOk.value],
+        [paramMsg.value, paramOk.value], [manualMsg.value, manualOk.value],
+        [fotoMsg.value, fotoOk.value], [comprapeMsg.value, comprapeOk.value]
+      ]
+      const activo = pares.find(p => p[0])
+      if (activo) ponerAviso(activo[0], activo[1])
+    })
+
     onMounted(() => {
       if (token.value) { registrarActividad(); cargar() }
       window.addEventListener('click', registrarActividad)
-      window.addEventListener('keydown', registrarActividad)
+      window.addEventListener('keydown', (e) => {
+        registrarActividad()
+        // H-12: Escape cierra cualquier modal abierto (el panel no tenia salida
+        // de teclado; solo el boton Cancelar/X).
+        if (e.key !== 'Escape') return
+        licEditando.value = null; licViendo.value = null
+        paqEditando.value = null; modEditando.value = null
+        packEditando.value = null; packAsignando.value = null
+        manualModulo.value = null; fotoMod.value = null
+        temaEditando.value = null; temaVer.value = null
+      })
       setInterval(() => {
         if (token.value && Date.now() - ultimaActividad > LIMITE_INACTIVIDAD_MS) {
           logout()
@@ -2541,7 +2950,7 @@ createApp({
       }, 60000)
     })
     return { token, error, tab, licencias, paquetes, maquinas, licSeleccionada, licSelId,
-      licEditando, licViendo, modEditando, paqEditando, catalogo, valoraciones, valDestino, opcionesModulos,
+      licEditando, licViendo, modEditando, paqEditando, catalogo, catalogoPublico, salud, valoraciones, valDestino, opcionesModulos,
       moduloParaAgregar, mostrarClaveManual, modulosNoSeleccionados, agregarModuloLic,
       login, nueva, nuevoP, nuevoM, nuevaV,
       hacerLogin, logout, cargar,
@@ -2558,7 +2967,8 @@ createApp({
       agregarPortadaUrl, agregarPortadaImagen, quitarPortada, moverPortada,
       elegirPortadaImagen, imagenPortadaSrc,
       paramForm, paramBool, paramMsg, paramOk, guardandoParam, cargarParametros, guardarParametros, numeroAnios,
-      cargarValoraciones, toggleValoracion, eliminarValoracion,
+      anualFactor, guardandoFactor, cargarFactor, guardarFactor,
+      cargarValoraciones, toggleValoracion, eliminarValoracion, auditoria, cargarAuditoria,
       fotoOk,
       cargarValoracionesModulos, promedioMod, verValoracionesModulo,
       // DISPOSITIVOS: modo de MOODU por licencia, packs de cupo y su edicion
@@ -2568,7 +2978,14 @@ createApp({
       abrirAsignarPack, asignarPack, quitarPack,
       temas, temaEditando, temaVer, temaMsg, nuevoT,
       cargarTemas, crearTema, editarTema, guardarTema, eliminarTema, verTema,
-      leerTemaArchivo, leerTemaArchivoEdicion }
+      leerTemaArchivo, leerTemaArchivoEdicion,
+      // MANUAL DE USO POR MODULO (REQ-AYU-02)
+      manualModulo, manualForm, manualMsg, manualOk, manualGuardando,
+      abrirManual, cerrarManual, agregarSeccion, quitarSeccion, agregarItem, quitarItem,
+      agregarPaso, quitarPaso, agregarPregunta, quitarPregunta, subirImagenManual,
+      guardarManual, quitarManual,
+      // H-13: aviso flotante unico
+      aviso, ponerAviso }
   }
 }).mount('#app')
 </script>

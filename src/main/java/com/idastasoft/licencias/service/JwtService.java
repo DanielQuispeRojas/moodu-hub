@@ -71,6 +71,16 @@ public class JwtService {
         return extractAllClaims(token).getSubject();
     }
 
+    /** H-15: un JWT valido pero sin claim rol=ADMIN no abre el panel. */
+    public boolean esAdmin(String token) {
+        try {
+            Object rol = extractAllClaims(token).get("rol");
+            return rol != null && "ADMIN".equalsIgnoreCase(String.valueOf(rol));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
                 .verifyWith(key)

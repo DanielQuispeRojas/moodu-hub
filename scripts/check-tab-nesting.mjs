@@ -14,6 +14,10 @@
 //      entero: la pestana queda en blanco y no hay error que lo explique.
 //   2) Balance de etiquetas del documento (delta 0). Un delta != 0 significa que hay
 //      un cierre de mas o de menos; el "delta 1" que arrastraba el panel era ESTE bug.
+//   3) Balance de columnas por tabla: cada <th> debe tener un <td> (H-01: la tabla
+//      de Licencias tenia 9 cabeceras y 10 celdas, asi que "Vigencia" mostraba el
+//      numero de maquinas). Se tolera UNA fila extra cuando la tabla tiene una fila
+//      de estado vacio (`v-if="!lista.length"`), que es un <td colspan> legitimo.
 //
 // Uso:  node scripts/check-tab-nesting.mjs [archivo ...]
 //       (sin argumentos: admin-web/ y su espejo en static/)
@@ -106,8 +110,34 @@ for (const rel of archivos) {
     console.log(`   AVISO  ${rel}: no existe (omitido)`);
     continue;
   }
-  const { bloques, delta } = analizar(limpiar(fs.readFileSync(abs, 'utf8')));
+  const html = limpiar(fs.readFileSync(abs, 'utf8'));
+  const { bloques, delta } = analizar(html);
   const problemas = [];
+
+  // 3) columnas por tabla (H-01). Se recorre cada <table> y se comparan <th>/<td>.
+  const lineas = html.split('\n');
+  let inicioTabla = -1, th = 0, td = 0, filaVacia = false;
+  const revisarTabla = (fin) => {
+    if (inicioTabla < 0) return;
+    // Una fila de estado vacio anade un <td colspan> sin <th> equivalente.
+    const permitido = filaVacia ? 1 : 0;
+    if (th !== td + 0 && th !== td - permitido) {
+      problemas.push(
+        `tabla en linea ${inicioTabla + 1}: ${th} cabeceras (th) vs ${td} celdas (td)` +
+        `${filaVacia ? ' (tiene fila de estado vacio, se tolera 1td extra)' : ''}. ` +
+        `Las columnas quedan desalineadas.`);
+    }
+    inicioTabla = -1; th = 0; td = 0; filaVacia = false;
+  };
+  lineas.forEach((linea, idx) => {
+    if (/<table[\s>]/.test(linea)) { inicioTabla = idx; th = 0; td = 0; filaVacia = false; }
+    if (inicioTabla >= 0) {
+      th += (linea.match(/<th[\s>]/g) || []).length;
+      td += (linea.match(/<td[\s>]/g) || []).length;
+      if (/v-if="!\s*[\w.]+\.length"/.test(linea)) filaVacia = true;
+    }
+    if (/<\/table>/.test(linea)) revisarTabla(idx);
+  });
 
   // 1) todos los bloques de pestana al mismo nivel
   if (bloques.length) {

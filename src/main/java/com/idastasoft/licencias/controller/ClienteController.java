@@ -6,6 +6,7 @@ import com.idastasoft.licencias.model.Maquina;
 import com.idastasoft.licencias.repository.ClienteUsuarioRepo;
 import com.idastasoft.licencias.repository.LicenciaRepo;
 import com.idastasoft.licencias.repository.MaquinaRepo;
+import com.idastasoft.licencias.service.ClienteSesionService;
 import com.idastasoft.licencias.service.LicenciaService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,17 +26,26 @@ public class ClienteController {
     private final LicenciaService licenciaService;
     private final PasswordEncoder passwordEncoder;
     private final com.idastasoft.licencias.repository.PaqueteRepo paqueteRepo;
+    private final ClienteSesionService sesiones;
 
     public ClienteController(ClienteUsuarioRepo clienteRepo, LicenciaRepo licenciaRepo,
                              MaquinaRepo maquinaRepo, LicenciaService licenciaService,
                              PasswordEncoder passwordEncoder,
-                             com.idastasoft.licencias.repository.PaqueteRepo paqueteRepo) {
+                             com.idastasoft.licencias.repository.PaqueteRepo paqueteRepo,
+                             ClienteSesionService sesiones) {
         this.clienteRepo = clienteRepo;
         this.licenciaRepo = licenciaRepo;
         this.maquinaRepo = maquinaRepo;
         this.licenciaService = licenciaService;
         this.passwordEncoder = passwordEncoder;
         this.paqueteRepo = paqueteRepo;
+        this.sesiones = sesiones;
+    }
+
+    /** H-02: todo dato del cliente necesita sesion, no solo el correo de la URL. */
+    private ResponseEntity<?> noAutorizado() {
+        return ResponseEntity.status(401).body(Map.of("ok", false,
+                "mensaje", "Inicie sesion para gestionar sus dispositivos"));
     }
 
     /** Visitante: lista de paquetes activos (precios y modulos). */
@@ -72,15 +82,31 @@ public class ClienteController {
         if (c.isEmpty() || !passwordEncoder.matches(clave, c.get().getClave())) {
             return ResponseEntity.status(401).body(Map.of("ok", false, "mensaje", "Credenciales invalidas"));
         }
-        return ResponseEntity.ok(Map.of("ok", true, "correo", c.get().getCorreo(), "nombre", c.get().getNombre()));
+        String token = sesiones.emitir(c.get().getCorreo());
+        return ResponseEntity.ok(Map.of("ok", true, "correo", c.get().getCorreo(),
+                "nombre", c.get().getNombre(), "token", token));
+    }
+
+    /** Cierra la sesion del panel cliente y revoca el token. */
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestHeader(value = "X-Cliente-Token", required = false) String token) {
+        sesiones.revocar(token);
+        return ResponseEntity.ok(Map.of("ok", true));
     }
 
     /** Cliente logueado: sus licencias y sus maquinas (para desligar). */
     @GetMapping("/mis-dispositivos")
-    public ResponseEntity<?> misDispositivos(@RequestParam String correo) {
+    public ResponseEntity<?> misDispositivos(@RequestParam String correo,
+                                              @RequestHeader(value = "X-Cliente-Token", required = false) String token) {
+        if (!sesiones.autoriza(token, correo)) return noAutorizado();
         Licencia l = licenciaRepo.findByCorreo(correo).orElse(null);
         if (l == null) {
-            return ResponseEntity.ok(Map.of("licencia", null, "maquinas", List.of()));
+            // H-22 (preexistente): Map.of NO admite valores null -> 500 en un
+            // cliente recien registrado sin licencia. LinkedHashMap lo permite.
+            Map<String, Object> vacio = new java.util.LinkedHashMap<>();
+            vacio.put("licencia", null);
+            vacio.put("maquinas", List.of());
+            return ResponseEntity.ok(vacio);
         }
         List<Maquina> maquinas = maquinaRepo.findByLicenciaCorreo(correo);
         Map<String, Object> lic = new java.util.LinkedHashMap<>();
@@ -98,7 +124,9 @@ public class ClienteController {
 
     /** Cliente desliga una maquina de su licencia. */
     @PostMapping("/maquinas/{idHardware}/desactivar")
-    public ResponseEntity<?> desactivarPropia(@RequestParam String correo, @PathVariable String idHardware) {
+    public ResponseEntity<?> desactivarPropia(@RequestParam String correo, @PathVariable String idHardware,
+                                               @RequestHeader(value = "X-Cliente-Token", required = false) String token) {
+        if (!sesiones.autoriza(token, correo)) return noAutorizado();
         Licencia l = licenciaRepo.findByCorreo(correo).orElse(null);
         if (l == null) return ResponseEntity.badRequest().body(Map.of("ok", false, "mensaje", "Sin licencia"));
         boolean ok = licenciaService.desactivarMaquina(l.getId(), idHardware);
@@ -108,7 +136,9 @@ public class ClienteController {
 
     /** Borra el registro de una maquina YA desvinculada (sin rastro en el Hub). */
     @DeleteMapping("/maquinas/{idHardware}")
-    public ResponseEntity<?> eliminarPropia(@RequestParam String correo, @PathVariable String idHardware) {
+    public ResponseEntity<?> eliminarPropia(@RequestParam String correo, @PathVariable String idHardware,
+                                             @RequestHeader(value = "X-Cliente-Token", required = false) String token) {
+        if (!sesiones.autoriza(token, correo)) return noAutorizado();
         boolean ok = licenciaService.eliminarMaquinaPorCorreo(correo, idHardware);
         if (!ok) {
             return ResponseEntity.badRequest().body(Map.of("ok", false,

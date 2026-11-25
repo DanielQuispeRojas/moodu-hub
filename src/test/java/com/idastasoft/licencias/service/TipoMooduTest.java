@@ -109,4 +109,13 @@ class TipoMooduTest {
         assertTrue(TipoMoodu.esClaveTier("moodu_plus"));
         assertFalse(TipoMoodu.esClaveTier("almacen"));
     }
+
+    @Test
+    @DisplayName("H-06: PERMANENTE se lee legacy pero NO se puede crear para PLUS")
+    void permanenteSoloLecturaParaPlus() {
+        assertTrue(TipoMoodu.PLUS.admite("PERMANENTE"));      // legacy
+        assertFalse(TipoMoodu.PLUS.admiteAlta("PERMANENTE")); // alta prohibida
+        assertTrue(TipoMoodu.PLUS.admiteAlta("TRIENAL"));
+        assertEquals(java.util.Set.of("TRIENAL"), TipoMoodu.PLUS.periodicidadesAlta());
+    }
 }
